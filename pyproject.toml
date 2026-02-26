@@ -30,7 +30,7 @@ dependencies = [
     "email-validator==2.2.0",
 
     # Databases
-    "motor==3.6.0",
+    "motor==4.3.1",
     "pymongo==4.10.1",
     "redis[hiredis]==5.2.0",
     "pinecone-client==5.0.1",
