@@ -3,37 +3,36 @@
 # ║  Port: 7860  |  User: UID 1000  |  Build: multi-stage       ║
 # ╚══════════════════════════════════════════════════════════════╝
 #
-# REQUIRED repo layout (paths are relative to repo root):
+# Repo layout (all paths relative to repo root = Docker build context):
 #
 #   your-repo/
-#   ├── Dockerfile          ← this file (MUST be at repo root)
-#   ├── pyproject.toml      ← dependency manifest
-#   ├── backend/
-#   │   └── app/            ← FastAPI source code
-#   └── frontend/           ← templates + static assets
-#       ├── templates/
-#       └── static/
-#
-# HF Spaces builds from repo root as the Docker build context.
-# Every COPY path is relative to that root.
+#   ├── Dockerfile
+#   ├── pyproject.toml
+#   ├── backend/app/        ← FastAPI source
+#   └── frontend/           ← templates + static
 
 # ── Stage 1: Builder ─────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /build
-
+# Build-time system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy manifest from repo root — layer cache: only reinstalls when
-# pyproject.toml changes, not on every code change
+# ── KEY FIX: build the venv at /app/.venv, not /build/.venv ──────
+# uv embeds the venv path into every script shebang at creation time.
+# If you build at /build/.venv and copy to /app/.venv, all shebang
+# lines still point to /build/.venv/bin/python — which doesn't exist
+# in the runtime stage → "no such file or directory" on exec.
+# Building at /app/.venv means the paths survive the COPY unchanged.
+WORKDIR /app
+
 COPY pyproject.toml .
 
-RUN uv venv .venv && \
+RUN uv venv /app/.venv && \
     uv sync --no-group dev --no-cache
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────
@@ -42,7 +41,6 @@ FROM python:3.11-slim AS runtime
 LABEL maintainer="ChisCode Team"
 LABEL description="ChisCode AI Agent Builder — FastAPI on Hugging Face Spaces"
 
-# Runtime system deps only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
@@ -60,35 +58,31 @@ RUN groupadd --gid 1000 chiscode \
 
 WORKDIR /app
 
-# Copy pre-built venv from builder stage
-COPY --from=builder /build/.venv /app/.venv
+# Copy venv — paths are already /app/.venv/... so shebangs are valid
+COPY --from=builder /app/.venv /app/.venv
 
-ENV PATH="/app/.venv/bin:$PATH"
+# Activate venv for all subsequent RUN commands and the final CMD
+ENV PATH="/app/.venv/bin:$PATH" \
+    VIRTUAL_ENV="/app/.venv"
 
-# ── Copy application source ───────────────────────────────────────
-# backend/app/ → /app/app/
-# The COPY source path is relative to the repo root (build context).
+# Copy application source
 COPY --chown=1000:1000 backend/app ./app
+COPY --chown=1000:1000 frontend    ./frontend
 
-# frontend/ → /app/frontend/
-# This directory MUST exist at the repo root.
-# If missing, the build will fail with: "/frontend": not found
-COPY --chown=1000:1000 frontend ./frontend
-
-# Runtime writable directories
+# Writable runtime dirs
 RUN mkdir -p /app/logs /app/temp \
     && chown -R 1000:1000 /app/logs /app/temp
 
-# ── Environment ───────────────────────────────────────────────────
+# Python flags
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1 \
     APP_ENV=production \
     PORT=7860
 
-# All secrets (API keys, DB URLs, JWT keys) are set via:
-# HF Space → Settings → Variables and Secrets
-# They are injected at runtime — never bake them into the image.
+# Verify uvicorn is reachable before dropping to non-root —
+# fails the build immediately if the venv is broken, not at runtime
+RUN /app/.venv/bin/uvicorn --version
 
 USER 1000
 
@@ -100,7 +94,7 @@ HEALTHCHECK --interval=30s \
             --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-CMD ["uvicorn", "app.main:app", \
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "7860", \
      "--workers", "2", \
