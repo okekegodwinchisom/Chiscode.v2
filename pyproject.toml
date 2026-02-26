@@ -1,9 +1,9 @@
 # ================================================================
 #  ChisCode — pyproject.toml
-#  Package manager: uv (recommended) or pip
+#  Package manager: uv
 #
-#  uv sync                   # runtime deps only
-#  uv sync --group dev       # + test/lint tools
+#  uv sync                    # runtime deps only (used in Docker)
+#  uv sync --group dev        # + test/lint tools (local dev)
 #  uv run uvicorn app.main:app --reload
 #  uv run pytest
 # ================================================================
@@ -12,14 +12,12 @@
 name            = "chiscode"
 version         = "0.1.0"
 description     = "AI-powered agent builder — natural language to production-ready apps"
-readme          = "README.md"
 license         = { text = "MIT" }
 authors         = [{ name = "ChisCode Team" }]
 
-# ── Pin to 3.11.x — matches the Dockerfile base image exactly.
-# Without a tight upper bound, uv attempts to resolve for all
-# supported versions (including 3.12, 3.13) which can surface
-# conflicts that don't exist on our actual runtime Python.
+# Matches python:3.11-slim Docker base exactly.
+# Upper bound stops uv attempting cross-version resolution,
+# which surfaces phantom conflicts on versions we never run.
 requires-python = ">=3.11,<3.12"
 
 # ── Runtime dependencies ──────────────────────────────────────
@@ -45,7 +43,7 @@ dependencies = [
     "email-validator==2.2.0",
 
     # Databases
-    # motor 3.6.0 requires pymongo>=4.9,<4.10 — must match exactly
+    # motor 3.6.0 requires pymongo>=4.9,<4.10 — pinned to match
     "motor==3.6.0",
     "pymongo==4.9.2",
     "redis[hiredis]==5.2.0",
@@ -75,9 +73,10 @@ dependencies = [
     "rich==13.9.4",
 ]
 
-# ── Dependency groups (replaces [tool.uv.dev-dependencies]) ──
-# uv sync --group dev   → installs runtime + dev tools
-# uv sync               → runtime only (used in Docker)
+# ── Dependency groups ─────────────────────────────────────────
+# PEP 735 — replaces the deprecated [tool.uv.dev-dependencies]
+# Docker: uv sync --no-group dev   (runtime only)
+# Local:  uv sync --group dev      (runtime + dev tools)
 [dependency-groups]
 dev = [
     "pytest==8.3.3",
@@ -91,13 +90,13 @@ dev = [
     "types-python-jose",
 ]
 
-# ── Build system ──────────────────────────────────────────────
-[build-system]
-requires      = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["app"]
+# ── NO [build-system] block ───────────────────────────────────
+# uv sync installs dependencies directly — it does NOT invoke a
+# build backend unless you run `uv build` to publish to PyPI.
+# Including [build-system] + hatchling caused the Docker build to
+# fail because hatchling tried to locate README.md (absent from
+# the /build context) before installing any packages.
+# Removing it is the correct fix — not working around it.
 
 # ── Ruff ─────────────────────────────────────────────────────
 [tool.ruff]
@@ -107,9 +106,9 @@ line-length    = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 ignore = [
-    "E501",  # line length — handled by ruff format
-    "B008",  # function calls in default args — FastAPI pattern
-    "N806",  # lowercase variable — pydantic/SQLAlchemy patterns
+    "E501",  # line length — ruff format handles this
+    "B008",  # function calls in default args — FastAPI Depends() pattern
+    "N806",  # lowercase variable — pydantic field patterns
 ]
 
 [tool.ruff.lint.isort]
