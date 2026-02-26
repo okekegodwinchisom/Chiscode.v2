@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07090f" />
+  <title>{% block title %}ChisCode{% endblock %}</title>
+  <meta name="description" content="{% block description %}AI-powered agent builder — natural language to production-ready apps{% endblock %}" />
+
+  <!-- Preconnect to font CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Design system -->
+  <link rel="stylesheet" href="/static/css/main.css" />
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" defer></script>
+  <!-- Alpine.js -->
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+
+  {% block head %}{% endblock %}
+</head>
+<body
+  x-data="{ sidebarOpen: false }"
+  hx-boost="true"
+>
+
+  <!-- Ambient texture overlays -->
+  <div class="noise"     aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  {% block body %}{% endblock %}
+
+  <!-- Toast container -->
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Main JS -->
+  <script src="/static/js/main.js"></script>
+  {% block scripts %}{% endblock %}
+
+</body>
+</html>
