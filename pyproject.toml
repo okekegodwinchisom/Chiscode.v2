@@ -1,11 +1,26 @@
+# ================================================================
+#  ChisCode — pyproject.toml
+#  Package manager: uv (recommended) or pip
+#
+#  uv sync                   # runtime deps only
+#  uv sync --group dev       # + test/lint tools
+#  uv run uvicorn app.main:app --reload
+#  uv run pytest
+# ================================================================
+
 [project]
-name = "chiscode"
-version = "0.1.0"
-description = "AI-powered agent builder — natural language to production-ready apps"
-readme = "README.md"
-requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [{ name = "ChisCode Team" }]
+name            = "chiscode"
+version         = "0.1.0"
+description     = "AI-powered agent builder — natural language to production-ready apps"
+readme          = "README.md"
+license         = { text = "MIT" }
+authors         = [{ name = "ChisCode Team" }]
+
+# ── Pin to 3.11.x — matches the Dockerfile base image exactly.
+# Without a tight upper bound, uv attempts to resolve for all
+# supported versions (including 3.12, 3.13) which can surface
+# conflicts that don't exist on our actual runtime Python.
+requires-python = ">=3.11,<3.12"
 
 # ── Runtime dependencies ──────────────────────────────────────
 dependencies = [
@@ -30,8 +45,9 @@ dependencies = [
     "email-validator==2.2.0",
 
     # Databases
-    "motor==4.3.1",
-    "pymongo==4.10.1",
+    # motor 3.6.0 requires pymongo>=4.9,<4.10 — must match exactly
+    "motor==3.6.0",
+    "pymongo==4.9.2",
     "redis[hiredis]==5.2.0",
     "pinecone-client==5.0.1",
 
@@ -59,19 +75,16 @@ dependencies = [
     "rich==13.9.4",
 ]
 
-# ── Optional dependency groups ────────────────────────────────
-[project.optional-dependencies]
-
+# ── Dependency groups (replaces [tool.uv.dev-dependencies]) ──
+# uv sync --group dev   → installs runtime + dev tools
+# uv sync               → runtime only (used in Docker)
+[dependency-groups]
 dev = [
-    "ruff==0.7.4",
     "pytest==8.3.3",
     "pytest-asyncio==0.24.0",
     "pytest-cov==6.0.0",
     "anyio==4.6.2",
     "httpx==0.27.2",
-]
-
-lint = [
     "ruff==0.7.4",
     "mypy==1.13.0",
     "types-passlib",
@@ -80,76 +93,56 @@ lint = [
 
 # ── Build system ──────────────────────────────────────────────
 [build-system]
-requires = ["hatchling"]
+requires      = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-# ── uv workspace settings ─────────────────────────────────────
-# Install with:  uv sync
-# Dev install:   uv sync --extra dev
-# Run:           uv run uvicorn app.main:app --reload
-[tool.uv]
-dev-dependencies = [
-    "ruff==0.7.4",
-    "pytest==8.3.3",
-    "pytest-asyncio==0.24.0",
-    "pytest-cov==6.0.0",
-    "anyio==4.6.2",
-    "httpx==0.27.2",
-]
-
-# ── Ruff (linter + formatter, replaces flake8 + black + isort) ─
+# ── Ruff ─────────────────────────────────────────────────────
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length    = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "S", "ANN"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 ignore = [
-    "E501",    # line too long (ruff format handles this)
-    "B008",    # do not perform function calls in default arguments (FastAPI pattern)
-    "N806",    # variable in function should be lowercase
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
-    "S101",    # use of assert (needed in tests)
+    "E501",  # line length — handled by ruff format
+    "B008",  # function calls in default args — FastAPI pattern
+    "N806",  # lowercase variable — pydantic/SQLAlchemy patterns
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
-force-single-line = true
+force-single-line  = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ANN"]
+"tests/**"    = ["S101"]
 "app/main.py" = ["ANN"]
 
 [tool.ruff.format]
-quote-style = "double"
+quote-style  = "double"
 indent-style = "space"
-line-ending = "lf"
+line-ending  = "lf"
 
-# ── Mypy (static type checking) ───────────────────────────────
+# ── Mypy ─────────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.11"
-strict = false
+python_version         = "3.11"
+strict                 = false
 ignore_missing_imports = true
-disallow_untyped_defs = true
-check_untyped_defs = true
-plugins = ["pydantic.mypy"]
+disallow_untyped_defs  = true
+check_untyped_defs     = true
+plugins                = ["pydantic.mypy"]
 
-# ── Pytest ────────────────────────────────────────────────────
+# ── Pytest ───────────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short --cov=app --cov-report=term-missing"
+testpaths    = ["tests"]
+addopts      = "-v --tb=short --cov=app --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["app"]
-omit = ["tests/*", "app/main.py"]
+omit   = ["tests/*", "app/main.py"]
 
 [tool.coverage.report]
 exclude_lines = [
