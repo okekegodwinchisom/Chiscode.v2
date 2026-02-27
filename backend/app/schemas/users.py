@@ -1,145 +1,60 @@
 """
-ChisCode — User Schemas
-Pydantic v2 models for user data validation and serialization.
+ChisCode — User Routes
+Profile, usage, and API key management endpoints.
 """
-from datetime import datetime
-from typing import Annotated, Any, Literal, Optional
+from datetime import date, timezone
 
-from bson import ObjectId
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import get_current_user, require_plan
+from app.core.config import settings
+from app.db import redis_client
+from app.schemas.user import ApiKeyResponse, UsageResponse, UserPublic
+from app.services import user_service
 
-# ── BSON ObjectId helper ──────────────────────────────────────
-
-class PyObjectId(str):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v: Any) -> str:
-        if isinstance(v, ObjectId):
-            return str(v)
-        if isinstance(v, str) and ObjectId.is_valid(v):
-            return v
-        raise ValueError(f"Invalid ObjectId: {v!r}")
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        from pydantic_core import core_schema
-        return core_schema.no_info_plain_validator_function(cls.validate)
+router = APIRouter(prefix="/users", tags=["users"])
 
 
-PlanType = Literal["free", "basic", "pro", "yearly"]
+@router.get("/me", response_model=UserPublic)
+async def get_profile(current_user=Depends(get_current_user)):
+    """Return the currently authenticated user's profile."""
+    return UserPublic.model_validate(current_user.model_dump(by_alias=True))
 
 
-# ── Core User Model (stored in MongoDB) ──────────────────────
+@router.get("/me/usage", response_model=UsageResponse)
+async def get_usage(current_user=Depends(get_current_user)):
+    """Return today's request usage and plan limits."""
+    today = date.today()
+    used = await redis_client.get_current_usage(str(current_user.id), today.isoformat())
+    daily_limit = settings.get_rate_limit(current_user.plan)
 
-class UserInDB(BaseModel):
-    """Represents a user document as stored in MongoDB."""
-    model_config = {"populate_by_name": True, "arbitrary_types_allowed": True}
+    from datetime import datetime, timedelta
+    tomorrow = datetime.combine(today + timedelta(days=1), datetime.min.time())
 
-    id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    email: EmailStr
-    username: str = Field(min_length=3, max_length=50)
-    hashed_password: Optional[str] = None    # None for OAuth-only users
-    is_active: bool = True
-    is_verified: bool = False
-
-    # GitHub OAuth
-    github_id: Optional[str] = None
-    github_username: Optional[str] = None
-    github_token_encrypted: Optional[str] = None  # Encrypted with Fernet
-
-    # Subscription / Plan
-    plan: PlanType = "free"
-    revenuecat_customer_id: Optional[str] = None
-
-    # API Access (Pro/Yearly only)
-    api_key_hash: Optional[str] = None
-
-    # Metadata
-    avatar_url: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    last_login: Optional[datetime] = None
+    return UsageResponse(
+        plan=current_user.plan,
+        daily_limit=daily_limit,
+        used_today=used,
+        remaining=max(0, daily_limit - used),
+        resets_at=tomorrow.isoformat() + "Z",
+    )
 
 
-# ── Request Schemas (API input) ───────────────────────────────
-
-class UserRegisterRequest(BaseModel):
-    email: EmailStr
-    username: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=8, max_length=128)
-
-    @field_validator("username")
-    @classmethod
-    def username_alphanumeric(cls, v: str) -> str:
-        if not v.replace("_", "").replace("-", "").isalnum():
-            raise ValueError("Username must be alphanumeric (underscores and hyphens allowed)")
-        return v.lower()
-
-    @field_validator("password")
-    @classmethod
-    def password_strength(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+@router.post("/me/api-key", response_model=ApiKeyResponse)
+async def generate_api_key(
+    current_user=Depends(require_plan("pro", "yearly")),
+):
+    """
+    Generate a new API key (Pro/Yearly plans only).
+    The raw key is returned once — store it securely.
+    """
+    raw_key = await user_service.generate_user_api_key(str(current_user.id))
+    return ApiKeyResponse(api_key=raw_key)
 
 
-class UserLoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class PasswordChangeRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=8, max_length=128)
-
-
-# ── Response Schemas (API output) ────────────────────────────
-
-class UserPublic(BaseModel):
-    """Safe user representation returned to clients (no secrets)."""
-    model_config = {"populate_by_name": True}
-
-    id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    email: EmailStr
-    username: str
-    plan: PlanType
-    avatar_url: Optional[str] = None
-    github_username: Optional[str] = None
-    is_verified: bool
-    created_at: datetime
-    has_api_key: bool = False
-
-    @model_validator(mode="before")
-    @classmethod
-    def set_has_api_key(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            data["has_api_key"] = bool(data.get("api_key_hash"))
-        return data
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int  # seconds
-    user: UserPublic
-
-
-class ApiKeyResponse(BaseModel):
-    """Returned once when API key is generated — raw key shown once only."""
-    api_key: str
-    message: str = "Store this key securely — it will not be shown again."
-
-
-class UsageResponse(BaseModel):
-    plan: PlanType
-    daily_limit: int
-    used_today: int
-    remaining: int
-    resets_at: str   # ISO date string
+@router.delete("/me/api-key", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_api_key(
+    current_user=Depends(require_plan("pro", "yearly")),
+):
+    """Revoke the current API key."""
+    await user_service.revoke_user_api_key(str(current_user.id))
