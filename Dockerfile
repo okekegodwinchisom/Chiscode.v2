@@ -94,10 +94,14 @@ HEALTHCHECK --interval=30s \
             --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
+# ... (everything above stays the same)
+
 CMD ["/app/.venv/bin/uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "7860", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--loop", "uvloop", \
      "--http", "h11", \
-     "--no-access-log"]
+     "--no-access-log", \
+     "--log-level", "warning", \
+     "--reload", "false"]
