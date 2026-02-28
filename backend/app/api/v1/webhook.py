@@ -33,12 +33,12 @@ def _verify_revenuecat_signature(body: bytes, signature: str | None) -> bool:
         # Skip verification in development if secret not configured
         return not settings.is_production
 
-    expected = hmac.new(
-        settings.revenuecat_webhook_secret.encode(),
-        body,
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    mac = hmac.new(
+        key=settings.revenuecat_webhook_secret.encode("utf-8"),
+        msg=body,
+        digestmod=hashlib.sha256,
+    )
+    return hmac.compare_digest(mac.hexdigest(), signature)
 
 
 @router.post("/revenuecat", status_code=status.HTTP_200_OK)
