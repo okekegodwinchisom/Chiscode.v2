@@ -181,4 +181,4 @@ async def revoke_user_api_key(user_id: str) -> None:
     await users_collection().update_one(
         {"_id": ObjectId(user_id)},
         {"$unset": {"api_key_hash": ""}, "$set": {"updated_at": datetime.now(tz=timezone.utc)}},
-    )p
+    )
