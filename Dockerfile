@@ -103,5 +103,4 @@ CMD ["/app/.venv/bin/uvicorn", "app.main:app", \
      "--loop", "uvloop", \
      "--http", "h11", \
      "--no-access-log", \
-     "--log-level", "warning", \
-     "--reload", "false"]
+     "--log-level", "warning"]
