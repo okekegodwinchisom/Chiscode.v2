@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        port=7860,)
+        port=7860
     )
 
     # ── App ──────────────────────────────────────────────────
