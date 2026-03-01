@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        port: int = 7860,
+        
     )
 
     # ── App ──────────────────────────────────────────────────
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(..., min_length=32)
     debug: bool = False
     allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
+    port: int = 7860
 
     # ── AI / LLM ─────────────────────────────────────────────
     codestral_api_key: str = Field(default="")
