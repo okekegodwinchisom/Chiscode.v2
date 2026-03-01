@@ -15,12 +15,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        port=7860,
+        port: init = 7860,
     )
 
     # ── App ──────────────────────────────────────────────────
     app_name: str = "ChisCode"
-    app_env: Literal["development", "staging", "production"] = "development"
+    app_env: Literal["development", "staging", "production"] = "production"
     app_version: str = "0.1.0"
     secret_key: str = Field(..., min_length=32)
     debug: bool = False
