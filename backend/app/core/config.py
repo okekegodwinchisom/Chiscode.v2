@@ -15,15 +15,18 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        
     )
 
     # ── App ──────────────────────────────────────────────────
     app_name: str = "ChisCode"
-    app_env: Literal["development", "staging", "production"] = "production"
+    app_env: Literal["development", "staging", "production"] = "development"
     app_version: str = "0.1.0"
     secret_key: str = Field(..., min_length=32)
     debug: bool = False
+    # Comma-separated list of allowed Host headers.
+    # HF Spaces: set ALLOWED_HOSTS secret to:
+    #   your-username-spacename.hf.space,localhost,127.0.0.1
+    # If only defaults are present the middleware allows all hosts (fail-open).
     allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
     port: int = 7860
 
@@ -77,7 +80,7 @@ class Settings(BaseSettings):
     rate_limit_yearly: int = 1000
 
     # ── Frontend ─────────────────────────────────────────────
-    frontend_base_url: str = "http://localhost:7860"
+    frontend_base_url: str = "http://localhost:"7860"
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
