@@ -45,10 +45,9 @@ dependencies = [
     # Databases
     # motor 3.6.0 requires pymongo>=4.9,<4.10 — pinned to match
     "motor==3.6.0",
-    "upstash-redis>=1.1.0",
     "certifi>=2024.2.2",   # TLS CA bundle for Atlas SSL validation
     "pymongo==4.9.2",
-    "redis[hiredis]==5.2.0",
+    "upstash-redis>=1.1.0",        # Upstash HTTP REST client (replaces redis-py)
     "pinecone-client==5.0.1",
 
     # Auth & Security
