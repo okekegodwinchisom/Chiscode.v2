@@ -139,4 +139,3 @@ async def remove_user_presence(project_id: str, user_id: str) -> None:
 async def get_project_presence(project_id: str) -> dict[str, str]:
     result = await get_redis().hgetall(f"presence:{project_id}")
     return result or {}
-    
