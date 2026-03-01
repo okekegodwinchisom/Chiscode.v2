@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # Stored as str so pydantic-settings doesn't try to JSON-parse it.
     # The validator below splits it into a list.
     allowed_hosts: str = "localhost,127.0.0.1"
+    port: int = 7860
 
     # ── AI / LLM ─────────────────────────────────────────────
     codestral_api_key: str = Field(default="")
@@ -80,7 +81,7 @@ class Settings(BaseSettings):
     rate_limit_yearly: int = 1000
 
     # ── Frontend ─────────────────────────────────────────────
-    frontend_base_url: str = "http://localhost:8000"
+    frontend_base_url: str = "http://localhost:7860"
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
