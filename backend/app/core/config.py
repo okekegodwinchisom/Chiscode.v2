@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        port: int = Field(default=7860, description="Port to run the server on")
     )
 
     # ── App ──────────────────────────────────────────────────
