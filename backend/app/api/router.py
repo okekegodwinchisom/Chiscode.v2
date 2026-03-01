@@ -227,7 +227,3 @@ async def github_callback(code: str, state: str, response: Response):
 
     logger.info("GitHub OAuth login", user_id=str(user.id), username=gh_user["login"])
     return redirect
-
-    # At the END of your existing backend/app/api/router.py
-# Export the router as api_router for the main import
-api_router = router  # This makes 'api_router' available for import
