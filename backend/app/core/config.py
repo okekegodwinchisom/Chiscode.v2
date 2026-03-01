@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     rate_limit_yearly: int = 1000
 
     # ── Frontend ─────────────────────────────────────────────
-    frontend_base_url: str = "http://localhost:8000"
+    frontend_base_url: str = "http://localhost:7860"
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
