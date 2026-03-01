@@ -107,40 +107,6 @@ def create_app() -> FastAPI:
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
-    # ── Static Files & Templates ──────────────────────────────
-import os
-from pathlib import Path
-
-frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
-static_path = os.path.join(frontend_path, "static")
-templates_path = os.path.join(frontend_path, "templates")
-
-# === ADD THIS DEBUG CODE ===
-print("\n" + "="*50)
-print("🔍 DEBUG: Frontend Paths")
-print("="*50)
-print(f"Current file: {__file__}")
-print(f"Frontend path: {frontend_path}")
-print(f"Frontend exists: {os.path.exists(frontend_path)}")
-print(f"Static path: {static_path}")
-print(f"Static exists: {os.path.exists(static_path)}")
-print(f"Templates path: {templates_path}")
-print(f"Templates exists: {os.path.exists(templates_path)}")
-
-if os.path.exists(templates_path):
-    print("\n📄 Files in templates directory:")
-    for file in os.listdir(templates_path):
-        print(f"  - {file}")
-    
-    index_path = os.path.join(templates_path, "index.html")
-    print(f"\nindex.html exists: {os.path.exists(index_path)}")
-else:
-    print("\n❌ Templates directory not found!")
-
-print("="*50 + "\n")
-# === END DEBUG CODE ===
-
-
     if os.path.exists(static_path):
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
