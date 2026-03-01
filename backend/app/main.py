@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -76,11 +75,8 @@ def create_app() -> FastAPI:
     #   ALLOWED_HOSTS = your-username-spacename.hf.space,localhost,127.0.0.1
     # Fallback: if ALLOWED_HOSTS only contains defaults, allow all hosts rather
     # than silently returning 400 to every browser request.
-    _hosts = settings.allowed_hosts_list
-    _defaults = {"localhost", "127.0.0.1"}
-    _configured = set(_hosts) - _defaults
-    _trusted = _hosts if _configured else ["*"]
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted)
+    # TrustedHostMiddleware removed — HF Spaces proxy handles host validation.
+    # Re-add if self-hosting behind your own reverse proxy.
 
     # Request timing middleware
     @app.middleware("http")
