@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     debug: bool = False
     # Comma-separated list of allowed Host headers.
     # HF Spaces: set ALLOWED_HOSTS secret to:
-    #   your-username-spacename.hf.space,localhost,127.0.0.1
-    # If only defaults are present the middleware allows all hosts (fail-open).
-    allowed_hosts: list[str] = ["localhost", "127.0.0.1"]
-    port: int = 7860
+    #   Godwin021-chiscode-v2.hf.space,localhost,127.0.0.1
+    # Stored as str so pydantic-settings doesn't try to JSON-parse it.
+    # The validator below splits it into a list.
+    allowed_hosts: str = "localhost,127.0.0.1"
 
     # ── AI / LLM ─────────────────────────────────────────────
     codestral_api_key: str = Field(default="")
@@ -80,14 +80,22 @@ class Settings(BaseSettings):
     rate_limit_yearly: int = 1000
 
     # ── Frontend ─────────────────────────────────────────────
-    frontend_base_url: str = "http://localhost:7860"
+    frontend_base_url: str = "http://localhost:8000"
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
-    def parse_allowed_hosts(cls, v):
-        if isinstance(v, str):
-            return [h.strip() for h in v.split(",")]
-        return v
+    def parse_allowed_hosts(cls, v: object) -> str:
+        # Always normalise to a comma-separated string.
+        # pydantic-settings v2 tries to JSON-parse list fields from env vars
+        # before validators run — storing as str bypasses that entirely.
+        if isinstance(v, list):
+            return ",".join(str(h) for h in v)
+        return str(v) if v else "localhost,127.0.0.1"
+
+    @property
+    def allowed_hosts_list(self) -> list[str]:
+        """Split the comma-separated string into a list for middleware use."""
+        return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
 
     @property
     def is_development(self) -> bool:
