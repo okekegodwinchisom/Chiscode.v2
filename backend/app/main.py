@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.api.router import api_router
+from app.api.router import router as api_router  # Import router as api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import mongodb, redis_client
