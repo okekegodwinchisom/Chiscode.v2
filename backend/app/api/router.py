@@ -227,3 +227,5 @@ async def github_callback(code: str, state: str, response: Response):
 
     logger.info("GitHub OAuth login", user_id=str(user.id), username=gh_user["login"])
     return redirect
+# At the bottom of app/api/router.py
+__all__ = ["router"]
