@@ -144,6 +144,17 @@ def create_app() -> FastAPI:
             content={"status": "ok" if all_ok else "degraded", "checks": checks},
         )
 
+    # ── Root Route ───────────────────────────────────────────────
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root(request: Request):
+    """Serve the main frontend page"""
+    return templates.TemplateResponse("index.html", {"request": request, "settings": settings})
+
+# Also add a favicon route to avoid 404s
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return HTMLResponse("")
+    
     # ── Frontend Routes ───────────────────────────────────────
     if templates:
         @app.get("/", response_class=HTMLResponse, include_in_schema=False)
