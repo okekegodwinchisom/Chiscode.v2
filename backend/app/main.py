@@ -182,3 +182,5 @@ def create_app() -> FastAPI:
     
     return app
 
+# At the very end of the file, after the create_app() function
+app = create_app()
