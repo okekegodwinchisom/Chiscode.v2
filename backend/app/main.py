@@ -194,16 +194,3 @@ async def favicon():
     
     return app
 
-
-app = create_app()
-# Add this right after creating the app
-print("="*50)
-print("REGISTERED ROUTES:")
-for route in app.routes:
-    print(f"  {route.path} -> {route.name}")
-print("="*50)
-
-# Also check if templates exist
-import os
-print(f"Templates path exists: {os.path.exists('frontend/templates')}")
-print(f"Index.html exists: {os.path.exists('frontend/templates/index.html')}")
