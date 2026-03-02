@@ -96,6 +96,11 @@ def create_app() -> FastAPI:
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
+        # After creating templates, add this:
+if templates:
+    # Make settings available in all templates
+    templates.env.globals["settings"] = settings
+    
     # Debug output
     print("\n" + "="*50)
     print("🔍 DEBUG: Frontend Paths")
