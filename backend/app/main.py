@@ -178,7 +178,20 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"detail": "Internal server error. Our team has been notified."},
         )
+    # In your create_app() function, after setting up templates and before returning app
 
+# ── Root Route ───────────────────────────────────────────────
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root(request: Request):
+    """Serve the main frontend page"""
+    return templates.TemplateResponse("index.html", {"request": request, "settings": settings})
+
+# Also add a favicon route to avoid 404s
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return HTMLResponse("")
+        
+    
     return app
 
 
