@@ -145,7 +145,7 @@ def create_app() -> FastAPI:
         )
 
     # ── Root Route ───────────────────────────────────────────────
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root(request: Request):
     """Serve the main frontend page"""
     return templates.TemplateResponse("index.html", {"request": request, "settings": settings})
