@@ -3,6 +3,8 @@ ChisCode — Security Utilities
 JWT token management, password hashing, API key generation, and encryption helpers.
 """
 import secrets
+import hashlib
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -27,24 +29,55 @@ def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:
         # Derive a valid 32-byte base64 key from SECRET_KEY
-        import base64
-        import hashlib
         key_bytes = hashlib.sha256(settings.secret_key.encode()).digest()
         fernet_key = base64.urlsafe_b64encode(key_bytes)
         _fernet = Fernet(fernet_key)
     return _fernet
 
 
-# ── Password ─────────────────────────────────────────────────
+# ── Password with 72-byte limit handling ───────────────────
+
+def _prepare_password(password: str) -> str:
+    """
+    Prepare password for bcrypt hashing by handling the 72-byte limit.
+    
+    Bcrypt can only handle passwords up to 72 bytes. For longer passwords,
+    we pre-hash with SHA-256 to create a fixed-length string.
+    This is a standard approach that maintains security while avoiding
+    the bcrypt limitation.
+    """
+    # Check if password exceeds 72 bytes
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        logger.debug(
+            "Password exceeds 72 bytes, applying SHA-256 pre-hashing",
+            original_length=len(password_bytes)
+        )
+        # Use SHA-256 to create a fixed-length hash (64 chars hex)
+        return hashlib.sha256(password_bytes).hexdigest()
+    return password
+
 
 def hash_password(plain: str) -> str:
-    """Hash a plaintext password using bcrypt."""
-    return pwd_context.hash(plain)
+    """
+    Hash a plaintext password using bcrypt.
+    
+    Automatically handles passwords longer than 72 bytes by pre-hashing
+    with SHA-256 before applying bcrypt.
+    """
+    prepared = _prepare_password(plain)
+    return pwd_context.hash(prepared)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a plaintext password against a bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    """
+    Verify a plaintext password against a bcrypt hash.
+    
+    Applies the same pre-hashing transformation if the password is
+    longer than 72 bytes to ensure consistent verification.
+    """
+    prepared = _prepare_password(plain)
+    return pwd_context.verify(prepared, hashed)
 
 
 # ── JWT ──────────────────────────────────────────────────────
