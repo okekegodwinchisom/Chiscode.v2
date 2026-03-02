@@ -3,6 +3,7 @@ ChisCode — FastAPI Application
 Main app factory with lifespan management, middleware, and routing.
 """
 import time
+import os
 from contextlib import asynccontextmanager
 
 import structlog
@@ -12,7 +13,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.api.router import router as api_router  # Import router as api_router
+# FIXED IMPORT - Import the router directly
+from app.api.router import router as auth_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import mongodb, redis_client
@@ -70,14 +72,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # TrustedHostMiddleware — blocks requests with unexpected Host headers.
-    # Needs your HF Spaces hostname in ALLOWED_HOSTS env var:
-    #   ALLOWED_HOSTS = your-username-spacename.hf.space,localhost,127.0.0.1
-    # Fallback: if ALLOWED_HOSTS only contains defaults, allow all hosts rather
-    # than silently returning 400 to every browser request.
-    # TrustedHostMiddleware removed — HF Spaces proxy handles host validation.
-    # Re-add if self-hosting behind your own reverse proxy.
-
     # Request timing middleware
     @app.middleware("http")
     async def add_request_timing(request: Request, call_next):
@@ -98,18 +92,40 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static Files & Templates ──────────────────────────────
-    import os
     frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
+    # Debug output
+    print("\n" + "="*50)
+    print("🔍 DEBUG: Frontend Paths")
+    print("="*50)
+    print(f"Frontend path: {frontend_path}")
+    print(f"Frontend exists: {os.path.exists(frontend_path)}")
+    print(f"Templates path: {templates_path}")
+    print(f"Templates exists: {os.path.exists(templates_path)}")
+    if os.path.exists(templates_path):
+        print(f"Index.html exists: {os.path.exists(os.path.join(templates_path, 'index.html'))}")
+    print("="*50 + "\n")
+
     if os.path.exists(static_path):
         app.mount("/static", StaticFiles(directory=static_path), name="static")
+        print(f"✅ Mounted static files from {static_path}")
 
     templates = Jinja2Templates(directory=templates_path) if os.path.exists(templates_path) else None
+    if templates:
+        print(f"✅ Loaded templates from {templates_path}")
 
     # ── API Routes ────────────────────────────────────────────
-    app.include_router(api_router, prefix="/api/v1")
+    # Include auth routes
+    app.include_router(auth_router, prefix="/api/v1")
+    
+    # Print registered routes for debugging
+    print("\n" + "="*50)
+    print("📋 REGISTERED ROUTES:")
+    for route in app.routes:
+        print(f"  {route.path}")
+    print("="*50 + "\n")
 
     # ── Health Check ──────────────────────────────────────────
     @app.get("/health", tags=["system"])
@@ -148,19 +164,43 @@ def create_app() -> FastAPI:
     if templates:
         @app.get("/", response_class=HTMLResponse, include_in_schema=False)
         async def index(request: Request):
-            return templates.TemplateResponse("index.html", {"request": request, "settings": settings})
+            return templates.TemplateResponse(
+                "index.html", 
+                {
+                    "request": request, 
+                    "settings": settings,
+                    "app_name": settings.app_name,
+                    "version": settings.app_version
+                }
+            )
 
         @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
         async def dashboard(request: Request):
-            return templates.TemplateResponse("dashboard/index.html", {"request": request})
+            return templates.TemplateResponse(
+                "dashboard/index.html", 
+                {"request": request, "settings": settings}
+            )
 
         @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
         async def login_page(request: Request):
-            return templates.TemplateResponse("auth/login.html", {"request": request})
+            return templates.TemplateResponse(
+                "auth/login.html", 
+                {"request": request, "settings": settings}
+            )
 
         @app.get("/register", response_class=HTMLResponse, include_in_schema=False)
         async def register_page(request: Request):
-            return templates.TemplateResponse("auth/register.html", {"request": request})
+            return templates.TemplateResponse(
+                "auth/register.html", 
+                {"request": request, "settings": settings}
+            )
+        
+        print("✅ Frontend routes registered (/, /dashboard, /login, /register)")
+
+    # ── Favicon ───────────────────────────────────────────────
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return HTMLResponse("")
 
     # ── Exception Handlers ────────────────────────────────────
     @app.exception_handler(404)
@@ -179,8 +219,7 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error. Our team has been notified."},
         )
     
-    
     return app
 
-# At the very end of the file, after the create_app() function
+
 app = create_app()
