@@ -96,11 +96,7 @@ def create_app() -> FastAPI:
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
-        # After creating templates, add this:
-if templates:
-    # Make settings available in all templates
-    templates.env.globals["settings"] = settings
-    
+        
     # Debug output
     print("\n" + "="*50)
     print("🔍 DEBUG: Frontend Paths")
@@ -213,7 +209,7 @@ if templates:
         if request.url.path.startswith("/api/"):
             return JSONResponse(status_code=404, content={"detail": "Not found."})
         if templates:
-            return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
+            return templates.TemplateResponse("404.html", {"request": request,"settings": settings}, status_code=404)
         return JSONResponse(status_code=404, content={"detail": "Not found."})
 
     @app.exception_handler(500)
