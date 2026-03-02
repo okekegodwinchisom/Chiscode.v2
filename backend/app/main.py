@@ -92,7 +92,7 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static Files & Templates ──────────────────────────────
-    frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+    frontend_path = "/app/frontend"
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
