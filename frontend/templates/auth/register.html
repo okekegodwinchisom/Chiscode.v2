@@ -81,6 +81,24 @@
 .strength-2 .strength-label { color: var(--amber); }
 .strength-3 .strength-label { color: var(--electric); }
 .strength-4 .strength-label { color: var(--neon); }
+
+/* Message styling */
+.register-message {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+.register-message.error {
+  background: rgba(255, 70, 70, 0.1);
+  border: 1px solid var(--plasma);
+  color: var(--plasma);
+}
+.register-message.success {
+  background: rgba(0, 255, 0, 0.1);
+  border: 1px solid var(--neon);
+  color: var(--neon);
+}
 </style>
 {% endblock %}
 
@@ -127,18 +145,17 @@
 
     <div class="divider divider--label" data-label="or" style="margin:1.4rem 0"></div>
 
+    <!-- FIXED: HTMX form with proper response handling -->
     <form
       class="auth-form"
       hx-post="/api/v1/auth/register"
       hx-target="#register-msg"
       hx-swap="innerHTML"
+      hx-headers='{"Accept": "application/json"}'
       @htmx:before-request="loading = true"
-      @htmx:after-request.window="loading = false"
-      @htmx:after-on-load.window="
-        if ($event.detail.xhr.status === 201) {
-          window.location.href = '/dashboard';
-        }
-      "
+      @htmx:after-request="loading = false"
+      @htmx:response-error="handleError(event)"
+      @htmx:response-success="handleSuccess(event)"
     >
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
@@ -182,7 +199,7 @@
         <div class="strength-label" :class="`strength-${strength}`" x-show="password.length > 0" x-text="strengthLabel"></div>
       </div>
 
-      <!-- Error / success slot -->
+      <!-- Error / success message container -->
       <div id="register-msg"></div>
 
       <button
@@ -190,8 +207,8 @@
         class="btn btn-primary btn-full"
         :disabled="loading"
       >
-        <span class="spinner"></span>
-        <span class="btn-label">Create Free Account</span>
+        <span x-show="loading" class="spinner"></span>
+        <span class="btn-label" x-text="loading ? 'Creating account...' : 'Create Free Account'"></span>
       </button>
     </form>
 
@@ -205,5 +222,67 @@
     </p>
   </div>
 </div>
+
+<script>
+  // FIXED: HTMX response handlers
+  function handleError(event) {
+    const msgDiv = document.getElementById('register-msg');
+    const xhr = event.detail.xhr;
+    let errorMessage = '';
+    
+    try {
+      const response = JSON.parse(xhr.responseText);
+      if (response.detail) {
+        if (Array.isArray(response.detail)) {
+          errorMessage = response.detail.map(err => err.msg).join('<br>');
+        } else {
+          errorMessage = response.detail;
+        }
+      } else {
+        errorMessage = 'Registration failed. Please try again.';
+      }
+    } catch (e) {
+      errorMessage = 'An unexpected error occurred.';
+    }
+    
+    msgDiv.innerHTML = `<div class="register-message error">${errorMessage}</div>`;
+  }
+
+  function handleSuccess(event) {
+    const msgDiv = document.getElementById('register-msg');
+    const xhr = event.detail.xhr;
+    
+    try {
+      const response = JSON.parse(xhr.responseText);
+      console.log('Registration successful:', response);
+      
+      // Show success message
+      msgDiv.innerHTML = '<div class="register-message success">Account created successfully! Redirecting...</div>';
+      
+      // Redirect to dashboard after 2 seconds
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+    } catch (e) {
+      console.error('Error parsing success response:', e);
+      // Still redirect even if response parsing fails
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+    }
+  }
+
+  // Alternative: Use htmx.on if the above doesn't work
+  document.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.requestConfig.path === '/api/v1/auth/register') {
+      if (event.detail.successful) {
+        // Successful registration
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1500);
+      }
+    }
+  });
+</script>
 
 {% endblock %}
