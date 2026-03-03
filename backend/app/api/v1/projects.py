@@ -12,7 +12,7 @@ from app.api.deps import check_rate_limit, get_current_user
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.mongodb import project_versions_collection, projects_collection
-from app.schemas.project import (
+from app.schemas.base import (
     ConfirmProjectRequest,
     GenerateProjectRequest,
     GenerationStarted,
