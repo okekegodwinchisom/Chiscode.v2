@@ -1,11 +1,26 @@
-# Add this at the very top of main.py
+"""
+ChisCode — FastAPI Application
+Main app factory with lifespan management, middleware, and routing.
+"""
 import sys
-print("Python path:", sys.path)
 import os
-print("Current directory:", os.getcwd())
-print("Files in app directory:", os.listdir("/app/app"))
-print("Files in schemas directory:", os.listdir("/app/app/schemas") if os.path.exists("/app/app/schemas") else "Schemas dir not found")
+import logging
 
+# DEBUG: Print file structure at startup
+print("="*60)
+print("🔍 DEBUG: Python Path and File Structure")
+print("="*60)
+print(f"Python path: {sys.path}")
+print(f"Current directory: {os.getcwd()}")
+print(f"Files in /app: {os.listdir('/app') if os.path.exists('/app') else 'Not found'}")
+print(f"Files in /app/app: {os.listdir('/app/app') if os.path.exists('/app/app') else 'Not found'}")
+print(f"Files in /app/app/schemas: {os.listdir('/app/app/schemas') if os.path.exists('/app/app/schemas') else 'Not found'}")
+print("="*60)
+
+# Rest of your imports
+import time
+from contextlib import asynccontextmanager
+# ... rest of your imports
 """
 ChisCode — FastAPI Application
 Main app factory with lifespan management, middleware, and routing.
