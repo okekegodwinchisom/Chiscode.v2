@@ -1,4 +1,30 @@
 """
+ChisCode — Project Schemas
+Pydantic v2 models for project and version data.
+"""
+from datetime import datetime
+from typing import Any, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+from app.schemas import PyObjectId  # ADD THIS LINE
+
+ProjectStatus = Literal[
+    "pending",
+    "analyzing",
+    "generating",
+    "quality_check",
+    "self_healing",
+    "awaiting_confirmation",
+    "committing",
+    "complete",
+    "failed",
+    "cancelled",
+]
+
+# ... rest of your file stays the same
+
+"""
 ChisCode — Project Routes
 Generation, iteration, version control, and WebSocket progress streaming.
 """
