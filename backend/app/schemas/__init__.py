@@ -36,4 +36,3 @@ class PyObjectId:
 
 # Export only PyObjectId - NO IMPORTS from project.py or user.py
 __all__ = ["PyObjectId"]
-EOF
