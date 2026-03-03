@@ -123,6 +123,43 @@
 }
 
 .auth-form { display: flex; flex-direction: column; gap: 1.1rem; }
+
+/* Form error styling */
+.form-error {
+  background: rgba(255, 70, 70, 0.1);
+  border: 1px solid var(--plasma);
+  color: var(--plasma);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.form-error svg {
+  flex-shrink: 0;
+}
+
+/* Spinner animation */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 </style>
 {% endblock %}
 
@@ -146,12 +183,7 @@
 
   <!-- Right form panel -->
   <div class="auth-form-panel">
-    <div class="auth-box"
-      x-data="{
-        loading: false,
-        errMsg: '',
-      }"
-    >
+    <div class="auth-box">
       <!-- Mobile-only logo -->
       <a href="/" class="auth-box__logo">Chis<em>Code</em></a>
 
@@ -168,25 +200,8 @@
 
       <div class="divider divider--label" data-label="or" style="margin:1.4rem 0"></div>
 
-      <!-- Email / password -->
-      <form
-        class="auth-form"
-        hx-post="/api/v1/auth/login"
-        hx-target="#login-msg"
-        hx-swap="innerHTML"
-        @htmx:before-request="loading = true; errMsg = ''"
-        @htmx:after-request.window="loading = false"
-        @htmx:after-on-load.window="
-          if ($event.detail.xhr.status === 200) {
-            window.location.href = '/dashboard';
-          }
-        "
-        @htmx:response-error.window="
-          loading = false;
-          try { errMsg = JSON.parse($event.detail.xhr.responseText)?.detail || 'Invalid credentials.'; }
-          catch { errMsg = 'Invalid credentials.'; }
-        "
-      >
+      <!-- Email / password form with Fetch API -->
+      <form id="loginForm" class="auth-form">
         <div class="form-group">
           <label class="form-label" for="email">Email address</label>
           <input
@@ -207,23 +222,15 @@
           />
         </div>
 
-        <!-- Error message slot -->
-        <div id="login-msg">
-          <template x-if="errMsg">
-            <p class="form-error">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span x-text="errMsg"></span>
-            </p>
-          </template>
-        </div>
+        <!-- Error message container -->
+        <div id="loginMessage" class="form-error" style="display: none;"></div>
 
         <button
           type="submit"
+          id="loginBtn"
           class="btn btn-primary btn-full"
-          :disabled="loading"
         >
-          <span class="spinner"></span>
-          <span class="btn-label">Sign In</span>
+          Sign In
         </button>
       </form>
 
@@ -235,4 +242,121 @@
   </div>
 
 </div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  // Get form elements
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const loginBtn = document.getElementById('loginBtn');
+  const messageDiv = document.getElementById('loginMessage');
+  
+  // Hide any previous message
+  messageDiv.style.display = 'none';
+  messageDiv.className = 'form-error';
+  
+  // Validate inputs
+  if (!email || !password) {
+    showMessage('Email and password are required', 'error');
+    return;
+  }
+  
+  // Show loading state
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span class="spinner"></span> Signing in...';
+  
+  try {
+    // Prepare request data
+    const requestData = {
+      email: email,
+      password: password
+    };
+    
+    console.log('Sending login request:', requestData);
+    
+    // Send POST request to API
+    const response = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData),
+      credentials: 'include' // Important for cookies!
+    });
+    
+    // Parse response JSON
+    const data = await response.json();
+    console.log('Login response:', data);
+    
+    if (response.ok) {
+      // Login successful - show success message and redirect
+      showMessage('Login successful! Redirecting to dashboard...', 'success');
+      
+      // Redirect to dashboard after 1 second
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1000);
+    } else {
+      // Handle error responses
+      let errorMessage = 'Invalid email or password';
+      
+      if (data.detail) {
+        if (Array.isArray(data.detail)) {
+          errorMessage = data.detail.map(err => err.msg || err.message).join('<br>');
+        } else if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        }
+      }
+      
+      showMessage(errorMessage, 'error');
+      
+      // Re-enable submit button
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = 'Sign In';
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    showMessage('Network error. Please check your connection and try again.', 'error');
+    
+    // Re-enable submit button
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = 'Sign In';
+  }
+});
+
+// Helper function to show messages
+function showMessage(text, type) {
+  const messageDiv = document.getElementById('loginMessage');
+  messageDiv.textContent = text;
+  messageDiv.style.display = 'flex';
+  
+  // Style based on type
+  if (type === 'success') {
+    messageDiv.style.background = 'rgba(0, 255, 0, 0.1)';
+    messageDiv.style.border = '1px solid var(--neon)';
+    messageDiv.style.color = 'var(--neon)';
+  } else {
+    messageDiv.style.background = 'rgba(255, 70, 70, 0.1)';
+    messageDiv.style.border = '1px solid var(--plasma)';
+    messageDiv.style.color = 'var(--plasma)';
+  }
+  
+  // Auto-hide error messages after 5 seconds
+  if (type === 'error') {
+    setTimeout(() => {
+      messageDiv.style.display = 'none';
+    }, 5000);
+  }
+}
+
+// Handle Enter key press
+document.getElementById('password').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+  }
+});
+</script>
 {% endblock %}
