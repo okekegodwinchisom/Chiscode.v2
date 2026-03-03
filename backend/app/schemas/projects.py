@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from app.schemas.user import PyObjectId
+from app.schemas import PyObjectId  # Import the custom ObjectId type
 
 ProjectStatus = Literal[
     "pending",
