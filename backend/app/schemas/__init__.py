@@ -1,6 +1,6 @@
 # app/schemas/__init__.py
 """
-ChisCode Schemas - Export all schema classes for easy importing
+ChisCode Schemas - Export only PyObjectId and common utilities
 """
 from bson import ObjectId
 from pydantic import GetCoreSchemaHandler
@@ -35,21 +35,6 @@ class PyObjectId:
             raise ValueError("Invalid ObjectId")
         return ObjectId(value)
 
-# Import all schemas to make them available from app.schemas
-from app.schemas.user import *
-from app.schemas.project import *
-
-# Explicitly export what should be available
-__all__ = [
-    "PyObjectId",  # This makes PyObjectId available via "from app.schemas import PyObjectId"
-    "UserInDB",
-    "UserPublic", 
-    "ProjectInDB",
-    "ProjectPublic",
-    "ProjectDetail",
-    "ProjectStatus",
-    "TechStack",
-    "ProjectSpec",
-    "GenerateProjectRequest",
-    "GenerationStarted"
-]
+# DO NOT import from project.py here - that causes circular import
+# Just export PyObjectId
+__all__ = ["PyObjectId"]
