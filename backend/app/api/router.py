@@ -4,7 +4,7 @@ Aggregates all v1 route modules.
 """
 from fastapi import APIRouter
 
-from app.api.v1 import auth, project, users, webhooks
+from app.api.v1 import auth, project, users, webhook
 
 api_router = APIRouter()
 
