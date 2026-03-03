@@ -1,184 +1,60 @@
 """
-ChisCode — User Service
-Business logic for user creation, authentication, and profile management.
+ChisCode — User Routes
+Profile, usage, and API key management endpoints.
 """
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import date, timezone
 
-from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.logging import get_logger
-from app.core.security import (
-    generate_api_key,
-    hash_password,
-    verify_api_key,
-    verify_password,
-)
-from app.db.mongodb import users_collection
-from app.schemas.user import UserInDB, UserRegisterRequest
+from app.api.deps import get_current_user, require_plan
+from app.core.config import settings
+from app.db import redis_client
+from app.schemas.user import ApiKeyResponse, UsageResponse, UserPublic
+from app.services import user_service
 
-logger = get_logger(__name__)
+router = APIRouter(prefix="/users", tags=["users"])
 
 
-class UserNotFoundError(Exception):
-    pass
+@router.get("/me", response_model=UserPublic)
+async def get_profile(current_user=Depends(get_current_user)):
+    """Return the currently authenticated user's profile."""
+    return UserPublic.model_validate(current_user.model_dump(by_alias=True))
 
 
-class UserAlreadyExistsError(Exception):
-    pass
+@router.get("/me/usage", response_model=UsageResponse)
+async def get_usage(current_user=Depends(get_current_user)):
+    """Return today's request usage and plan limits."""
+    today = date.today()
+    used = await redis_client.get_current_usage(str(current_user.id), today.isoformat())
+    daily_limit = settings.get_rate_limit(current_user.plan)
 
+    from datetime import datetime, timedelta
+    tomorrow = datetime.combine(today + timedelta(days=1), datetime.min.time())
 
-class InvalidCredentialsError(Exception):
-    pass
-
-
-# ── Create ────────────────────────────────────────────────────
-
-async def create_user(req: UserRegisterRequest) -> UserInDB:
-    """Register a new user with email/password."""
-    coll = users_collection()
-
-    user_doc = {
-        "email": req.email,
-        "username": req.username,
-        "hashed_password": hash_password(req.password),
-        "plan": "free",
-        "is_active": True,
-        "is_verified": False,
-        "created_at": datetime.now(tz=timezone.utc),
-        "updated_at": datetime.now(tz=timezone.utc),
-    }
-
-    try:
-        result = await coll.insert_one(user_doc)
-        user_doc["_id"] = result.inserted_id
-        logger.info("User created", user_id=str(result.inserted_id), email=req.email)
-        return UserInDB(**user_doc)
-    except DuplicateKeyError:
-        raise UserAlreadyExistsError(f"Email '{req.email}' is already registered.")
-
-
-async def upsert_github_user(
-    github_id: str,
-    github_username: str,
-    email: str,
-    avatar_url: str,
-    encrypted_token: str,
-) -> UserInDB:
-    """Create or update a user via GitHub OAuth."""
-    coll = users_collection()
-    now = datetime.now(tz=timezone.utc)
-
-    result = await coll.find_one_and_update(
-        {"github_id": github_id},
-        {
-            "$set": {
-                "github_username": github_username,
-                "email": email,
-                "avatar_url": avatar_url,
-                "github_token_encrypted": encrypted_token,
-                "last_login": now,
-                "updated_at": now,
-            },
-            "$setOnInsert": {
-                "plan": "free",
-                "is_active": True,
-                "is_verified": True,   # GitHub verifies email
-                "username": github_username,
-                "created_at": now,
-            },
-        },
-        upsert=True,
-        return_document=True,
+    return UsageResponse(
+        plan=current_user.plan,
+        daily_limit=daily_limit,
+        used_today=used,
+        remaining=max(0, daily_limit - used),
+        resets_at=tomorrow.isoformat() + "Z",
     )
-    return UserInDB(**result)
 
 
-# ── Read ──────────────────────────────────────────────────────
-
-async def get_user_by_id(user_id: str) -> UserInDB:
-    coll = users_collection()
-    doc = await coll.find_one({"_id": ObjectId(user_id)})
-    if not doc:
-        raise UserNotFoundError(f"User {user_id} not found.")
-    return UserInDB(**doc)
-
-
-async def get_user_by_email(email: str) -> Optional[UserInDB]:
-    coll = users_collection()
-    doc = await coll.find_one({"email": email})
-    return UserInDB(**doc) if doc else None
-
-
-async def get_user_by_api_key(raw_key: str) -> Optional[UserInDB]:
-    """Find a user by their raw API key (checks hash)."""
-    coll = users_collection()
-    # Cannot query by hash directly — iterate Pro/Yearly users
-    # In production, store a deterministic prefix for fast lookup
-    cursor = coll.find(
-        {"api_key_hash": {"$exists": True}, "plan": {"$in": ["pro", "yearly"]}}
-    )
-    async for doc in cursor:
-        user = UserInDB(**doc)
-        if user.api_key_hash and verify_api_key(raw_key, user.api_key_hash):
-            return user
-    return None
-
-
-# ── Auth ──────────────────────────────────────────────────────
-
-async def authenticate_user(email: str, password: str) -> UserInDB:
-    """Verify email/password credentials."""
-    user = await get_user_by_email(email)
-    if not user:
-        raise InvalidCredentialsError("Invalid email or password.")
-    if not user.hashed_password:
-        raise InvalidCredentialsError("This account uses GitHub login.")
-    if not verify_password(password, user.hashed_password):
-        raise InvalidCredentialsError("Invalid email or password.")
-    if not user.is_active:
-        raise InvalidCredentialsError("Account is deactivated.")
-
-    # Update last_login timestamp
-    await users_collection().update_one(
-        {"_id": ObjectId(user.id)},
-        {"$set": {"last_login": datetime.now(tz=timezone.utc)}},
-    )
-    return user
-
-
-# ── Update ────────────────────────────────────────────────────
-
-async def update_user_plan(user_id: str, plan: str) -> None:
-    """Update a user's subscription plan (called by RevenueCat webhook)."""
-    await users_collection().update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"plan": plan, "updated_at": datetime.now(tz=timezone.utc)}},
-    )
-    logger.info("User plan updated", user_id=user_id, plan=plan)
-
-
-async def generate_user_api_key(user_id: str) -> str:
+@router.post("/me/api-key", response_model=ApiKeyResponse)
+async def generate_api_key(
+    current_user=Depends(require_plan("pro", "yearly")),
+):
     """
-    Generate and store a new API key for a Pro/Yearly user.
-    Returns the raw key — it will not be retrievable again.
+    Generate a new API key (Pro/Yearly plans only).
+    The raw key is returned once — store it securely.
     """
-    user = await get_user_by_id(user_id)
-    if user.plan not in ("pro", "yearly"):
-        raise PermissionError("API key access requires Pro or Yearly plan.")
-
-    raw_key, hashed = generate_api_key()
-    await users_collection().update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"api_key_hash": hashed, "updated_at": datetime.now(tz=timezone.utc)}},
-    )
-    logger.info("API key generated", user_id=user_id)
-    return raw_key
+    raw_key = await user_service.generate_user_api_key(str(current_user.id))
+    return ApiKeyResponse(api_key=raw_key)
 
 
-async def revoke_user_api_key(user_id: str) -> None:
-    await users_collection().update_one(
-        {"_id": ObjectId(user_id)},
-        {"$unset": {"api_key_hash": ""}, "$set": {"updated_at": datetime.now(tz=timezone.utc)}},
-    )
+@router.delete("/me/api-key", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_api_key(
+    current_user=Depends(require_plan("pro", "yearly")),
+):
+    """Revoke the current API key."""
+    await user_service.revoke_user_api_key(str(current_user.id))
