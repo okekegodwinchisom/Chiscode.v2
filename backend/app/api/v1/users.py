@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db import redis_client
 from app.schemas.user import ApiKeyResponse, UsageResponse, UserPublic
 from app.services import user_service
+from app.schemas import PyObjectId  # Instead of defining it locally
 
 router = APIRouter(prefix="/users", tags=["users"])
 
