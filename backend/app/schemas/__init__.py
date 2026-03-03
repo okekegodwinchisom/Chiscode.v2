@@ -1,10 +1,13 @@
 # app/schemas/__init__.py
+"""
+ChisCode Schemas - Export all schema classes for easy importing
+"""
 from bson import ObjectId
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import core_schema
 from typing import Any
 
-
+# Define PyObjectId here so it can be imported from app.schemas
 class PyObjectId:
     """Custom type for handling MongoDB ObjectId in Pydantic v2."""
     
@@ -31,3 +34,22 @@ class PyObjectId:
         if not ObjectId.is_valid(value):
             raise ValueError("Invalid ObjectId")
         return ObjectId(value)
+
+# Import all schemas to make them available from app.schemas
+from app.schemas.user import *
+from app.schemas.project import *
+
+# Explicitly export what should be available
+__all__ = [
+    "PyObjectId",  # This makes PyObjectId available via "from app.schemas import PyObjectId"
+    "UserInDB",
+    "UserPublic", 
+    "ProjectInDB",
+    "ProjectPublic",
+    "ProjectDetail",
+    "ProjectStatus",
+    "TechStack",
+    "ProjectSpec",
+    "GenerateProjectRequest",
+    "GenerationStarted"
+]
