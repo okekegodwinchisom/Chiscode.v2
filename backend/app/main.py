@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # FIXED IMPORT - Import the router directly
-from app.api.router import router as auth_router
+from app.api.router import api_router as auth_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import mongodb, redis_client
