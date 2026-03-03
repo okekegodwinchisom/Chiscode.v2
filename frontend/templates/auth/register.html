@@ -99,6 +99,27 @@
   border: 1px solid var(--neon);
   color: var(--neon);
 }
+
+/* Spinner animation */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 </style>
 {% endblock %}
 
@@ -145,18 +166,8 @@
 
     <div class="divider divider--label" data-label="or" style="margin:1.4rem 0"></div>
 
-    <!-- FIXED: HTMX form with proper response handling -->
-    <form
-      class="auth-form"
-      hx-post="/api/v1/auth/register"
-      hx-target="#register-msg"
-      hx-swap="innerHTML"
-      hx-headers='{"Accept": "application/json"}'
-      @htmx:before-request="loading = true"
-      @htmx:after-request="loading = false"
-      @htmx:response-error="handleError(event)"
-      @htmx:response-success="handleSuccess(event)"
-    >
+    <!-- Registration Form - Using Fetch API -->
+    <form id="registerForm" class="auth-form">
       <div class="form-group">
         <label class="form-label" for="username">Username</label>
         <input
@@ -199,16 +210,15 @@
         <div class="strength-label" :class="`strength-${strength}`" x-show="password.length > 0" x-text="strengthLabel"></div>
       </div>
 
-      <!-- Error / success message container -->
-      <div id="register-msg"></div>
+      <!-- Message container for errors/success -->
+      <div id="registerMessage" class="register-message" style="display: none;"></div>
 
       <button
         type="submit"
+        id="submitBtn"
         class="btn btn-primary btn-full"
-        :disabled="loading"
       >
-        <span x-show="loading" class="spinner"></span>
-        <span class="btn-label" x-text="loading ? 'Creating account...' : 'Create Free Account'"></span>
+        Create Free Account
       </button>
     </form>
 
@@ -224,65 +234,121 @@
 </div>
 
 <script>
-  // FIXED: HTMX response handlers
-  function handleError(event) {
-    const msgDiv = document.getElementById('register-msg');
-    const xhr = event.detail.xhr;
-    let errorMessage = '';
-    
-    try {
-      const response = JSON.parse(xhr.responseText);
-      if (response.detail) {
-        if (Array.isArray(response.detail)) {
-          errorMessage = response.detail.map(err => err.msg).join('<br>');
-        } else {
-          errorMessage = response.detail;
-        }
-      } else {
-        errorMessage = 'Registration failed. Please try again.';
-      }
-    } catch (e) {
-      errorMessage = 'An unexpected error occurred.';
-    }
-    
-    msgDiv.innerHTML = `<div class="register-message error">${errorMessage}</div>`;
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  // Get form elements
+  const form = e.target;
+  const username = document.getElementById('username').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const submitBtn = document.getElementById('submitBtn');
+  const messageDiv = document.getElementById('registerMessage');
+  
+  // Hide any previous message
+  messageDiv.style.display = 'none';
+  messageDiv.className = 'register-message';
+  
+  // Validate inputs
+  if (!username || !email || !password) {
+    showMessage('All fields are required', 'error');
+    return;
   }
-
-  function handleSuccess(event) {
-    const msgDiv = document.getElementById('register-msg');
-    const xhr = event.detail.xhr;
+  
+  if (password.length < 8) {
+    showMessage('Password must be at least 8 characters long', 'error');
+    return;
+  }
+  
+  // Show loading state
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner"></span> Creating account...';
+  
+  try {
+    // Prepare request data
+    const requestData = {
+      username: username,
+      email: email,
+      password: password
+    };
     
-    try {
-      const response = JSON.parse(xhr.responseText);
-      console.log('Registration successful:', response);
-      
-      // Show success message
-      msgDiv.innerHTML = '<div class="register-message success">Account created successfully! Redirecting...</div>';
+    console.log('Sending registration request:', requestData);
+    
+    // Send POST request to API
+    const response = await fetch('/api/v1/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData)
+    });
+    
+    // Parse response JSON
+    const data = await response.json();
+    console.log('Registration response:', data);
+    
+    if (response.ok) {
+      // Registration successful
+      showMessage('Account created successfully! Redirecting to dashboard...', 'success');
       
       // Redirect to dashboard after 2 seconds
       setTimeout(() => {
         window.location.href = '/dashboard';
       }, 2000);
-    } catch (e) {
-      console.error('Error parsing success response:', e);
-      // Still redirect even if response parsing fails
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 2000);
-    }
-  }
-
-  // Alternative: Use htmx.on if the above doesn't work
-  document.addEventListener('htmx:afterRequest', function(event) {
-    if (event.detail.requestConfig.path === '/api/v1/auth/register') {
-      if (event.detail.successful) {
-        // Successful registration
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1500);
+    } else {
+      // Handle validation errors
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      if (data.detail) {
+        if (Array.isArray(data.detail)) {
+          // Pydantic validation error
+          errorMessage = data.detail.map(err => {
+            if (err.msg) return err.msg;
+            if (err.message) return err.message;
+            return JSON.stringify(err);
+          }).join('<br>');
+        } else if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        } else if (data.detail.message) {
+          errorMessage = data.detail.message;
+        }
       }
+      
+      showMessage(errorMessage, 'error');
+      
+      // Re-enable submit button
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Create Free Account';
     }
-  });
+  } catch (error) {
+    console.error('Registration error:', error);
+    showMessage('Network error. Please check your connection and try again.', 'error');
+    
+    // Re-enable submit button
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Create Free Account';
+  }
+});
+
+// Helper function to show messages
+function showMessage(text, type) {
+  const messageDiv = document.getElementById('registerMessage');
+  messageDiv.textContent = text;
+  messageDiv.className = `register-message ${type}`;
+  messageDiv.style.display = 'block';
+  
+  // Auto-hide error messages after 5 seconds
+  if (type === 'error') {
+    setTimeout(() => {
+      messageDiv.style.display = 'none';
+    }, 5000);
+  }
+}
+
+// Add this for Alpine.js compatibility if needed
+document.addEventListener('alpine:init', () => {
+  // Any Alpine.js initialization if needed
+});
 </script>
 
 {% endblock %}
