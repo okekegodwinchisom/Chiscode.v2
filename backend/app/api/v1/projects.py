@@ -1,12 +1,9 @@
-
 """
 ChisCode — Project Routes
 Generation, iteration, version control, and WebSocket progress streaming.
 """
 import json
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
-from pydantic import BaseModel, Field
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -15,20 +12,17 @@ from app.api.deps import check_rate_limit, get_current_user
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.mongodb import project_versions_collection, projects_collection
-from app.schemas import PyObjectId  # ADD THIS LINE
+from app.schemas.project import (
+    ConfirmProjectRequest,
+    GenerateProjectRequest,
+    GenerationStarted,
+    IterateProjectRequest,
+    ProjectDetail,
+    ProjectInDB,
+    ProjectPublic,
+    ProjectVersionPublic,
+)
 
-ProjectStatus = Literal[
-    "pending",
-    "analyzing",
-    "generating",
-    "quality_check",
-    "self_healing",
-    "awaiting_confirmation",
-    "committing",
-    "complete",
-    "failed",
-    "cancelled",
-]
 logger = get_logger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
 
