@@ -1,3 +1,11 @@
+# Add this at the very top of main.py
+import sys
+print("Python path:", sys.path)
+import os
+print("Current directory:", os.getcwd())
+print("Files in app directory:", os.listdir("/app/app"))
+print("Files in schemas directory:", os.listdir("/app/app/schemas") if os.path.exists("/app/app/schemas") else "Schemas dir not found")
+
 """
 ChisCode — FastAPI Application
 Main app factory with lifespan management, middleware, and routing.
