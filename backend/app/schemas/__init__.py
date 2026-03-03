@@ -1,4 +1,4 @@
-cat > /app/app/schemas/__init__.py << 'EOF'
+
 """
 ChisCode Schemas - Base types and exports
 """
