@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-
+from app.schemas import PyObjectId
 
 # ── BSON ObjectId helper ──────────────────────────────────────
 
