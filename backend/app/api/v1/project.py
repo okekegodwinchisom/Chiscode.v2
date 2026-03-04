@@ -571,4 +571,35 @@ async def list_project_files(
     current_user=Depends(get_current_user),
     path: Optional[str] = Query(None, description="Filter by directory path")
 ):
-    """List f
+    """List files in a project, optionally filtered by path."""
+    files = await project_service.get_project_files(project_id, str(current_user.id), path)
+    
+    if files is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    
+    return {"files": files}
+
+
+@router.get("/{project_id}/files/{file_path:path}")
+async def get_file_content(
+    project_id: str,
+    file_path: str,
+    current_user=Depends(get_current_user),
+    version: Optional[int] = Query(None, description="Version to retrieve")
+):
+    """Get content of a specific file in the project."""
+    content = await project_service.get_file_content(
+        project_id=project_id,
+        user_id=str(current_user.id),
+        file_path=file_path,
+        version=version
+    )
+    
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found.")
+    
+    return {
+        "content": content, 
+        "path": file_path, 
+        "version": version or "latest"
+    }
