@@ -16,7 +16,7 @@ from app.core.security import (
     verify_api_key,
 )
 from app.core.logging import setup_logging, get_logger
-from app.core.deps import (
+from app.api.deps import (
     get_current_user,
     get_optional_user,
     check_rate_limit,
