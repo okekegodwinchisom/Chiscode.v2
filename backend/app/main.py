@@ -17,10 +17,7 @@ print(f"Files in /app/app: {os.listdir('/app/app') if os.path.exists('/app/app')
 print(f"Files in /app/app/schemas: {os.listdir('/app/app/schemas') if os.path.exists('/app/app/schemas') else 'Not found'}")
 print("="*60)
 
-# Rest of your imports
-import time
-from contextlib import asynccontextmanager
-# ... rest of your imports
+
 """
 ChisCode — FastAPI Application
 Main app factory with lifespan management, middleware, and routing.
@@ -41,6 +38,7 @@ from app.api.router import api_router as auth_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import mongodb, redis_client
+from app.websocket.manager import init_websocket_manager, shutdown_websocket_manager
 
 # Initialise logging before anything else
 setup_logging()
@@ -62,12 +60,14 @@ async def lifespan(app: FastAPI):
     # Connect to databases
     await mongodb.connect()
     await redis_client.connect()
-
+    await init_websocket_manager()
+    
     logger.info("All connections established. ChisCode is ready.")
     yield
 
     # Cleanup on shutdown
     logger.info("ChisCode shutting down...")
+    await shutdown_websocket_manager()
     await mongodb.disconnect()
     await redis_client.disconnect()
     logger.info("Shutdown complete.")
