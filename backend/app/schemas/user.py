@@ -143,3 +143,16 @@ class UsageResponse(BaseModel):
     used_today: int
     remaining: int
     resets_at: str   # ISO date string
+
+    # Add these to your app/schemas/user.py
+
+class UserUpdate(BaseModel):
+    """Schema for updating user profile."""
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    avatar_url: Optional[str] = None
+    full_name: Optional[str] = Field(None, max_length=100)
+
+
+class UserDeleteResponse(BaseModel):
+    """Response after user deletion."""
+    message: str = "Account successfully deleted"
