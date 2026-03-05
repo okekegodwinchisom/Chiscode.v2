@@ -3,7 +3,7 @@ ChisCode — Database Package
 MongoDB and Redis connections and utilities.
 """
 
-from app.db.mongodb import (
+from.db.mongodb import (
     mongodb,
     get_database,
     get_collection,
@@ -14,7 +14,7 @@ from app.db.mongodb import (
     connect_to_mongodb
 )
 
-from app.db.redis_client import (
+from.db.redis_client import (
     redis_client,
     get_redis,
     close_redis_connection
