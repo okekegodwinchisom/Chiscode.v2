@@ -38,7 +38,6 @@ from app.api.router import api_router as auth_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import mongodb, redis_client
-from app.websocket.manager import init_websocket_manager, shutdown_websocket_manager
 
 # Initialise logging before anything else
 setup_logging()
@@ -60,14 +59,12 @@ async def lifespan(app: FastAPI):
     # Connect to databases
     await mongodb.connect()
     await redis_client.connect()
-    await init_websocket_manager()
     
     logger.info("All connections established. ChisCode is ready.")
     yield
 
     # Cleanup on shutdown
     logger.info("ChisCode shutting down...")
-    await shutdown_websocket_manager()
     await mongodb.disconnect()
     await redis_client.disconnect()
     logger.info("Shutdown complete.")
