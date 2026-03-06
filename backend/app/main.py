@@ -17,7 +17,6 @@ print(f"Files in /app/app: {os.listdir('/app/app') if os.path.exists('/app/app')
 print(f"Files in /app/app/schemas: {os.listdir('/app/app/schemas') if os.path.exists('/app/app/schemas') else 'Not found'}")
 print("="*60)
 
-
 """
 ChisCode — FastAPI Application
 Main app factory with lifespan management, middleware, and routing.
@@ -260,13 +259,7 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error. Our team has been notified."},
         )
 
-    # Add to the bottom of main.py, right before 'return app'
-print("\n" + "="*50)
-print("📋 REGISTERED ROUTES:")
-for route in app.routes:
-    print(f"  {route.path}")
-print("="*50 + "\n")
-    
+
     return app
 
 
