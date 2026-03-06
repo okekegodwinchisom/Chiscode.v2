@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # ── Auth ─────────────────────────────────────────────────
     github_client_id: str = Field(default="")
     github_client_secret: str = Field(default="")
-    github_redirect_uri: str = "http://localhost:8000/auth/github/callback"
+    github_redirect_uri: str = "http://localhost:7860/auth/github/callback"
 
     jwt_secret_key: str = Field(default="")
     jwt_algorithm: str = "HS256"
