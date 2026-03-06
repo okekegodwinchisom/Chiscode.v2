@@ -46,7 +46,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         value=access_token,
         httponly=True,
         secure=is_prod,
-        samesite="lax",
+        samesite="none",
         max_age=settings.jwt_access_token_expire_minutes * 60,
         path="/",
     )
@@ -55,7 +55,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         value=refresh_token,
         httponly=True,
         secure=is_prod,
-        samesite="lax",
+        samesite="none",
         max_age=settings.jwt_refresh_token_expire_days * 86400,
         path="/auth/refresh",
     )
