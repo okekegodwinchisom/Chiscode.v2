@@ -215,7 +215,27 @@ def create_app() -> FastAPI:
                 "auth/register.html", 
                 {"request": request, "settings": settings}
             )
-        
+
+        @app.get("/profile", response_class=HTMLResponse, include_in_schema=False)
+        async def profile_page(request: Request):
+            return templates.TemplateResponse(
+                "auth/profile.html",
+                {"request": request, "settings": settings }
+            )  
+
+        @app.get("/billing", response_class=HTMLResponse, include_in_schema=False)
+        async def billing_page(request: Request):
+            return templates.TemplateResponse(
+                "auth/billing.html",
+                {"request": request, "settings": settings }
+            )
+
+        @app.get("/api_keys", response_class=HTMLResponse, include_in_schema=False)
+        async def api_keys_page(request: Request)
+            return templates.TemplateResponse(
+                "auth/api_keys.html",
+                {"request": request, "settings": settings }
+            )
         print("✅ Frontend routes registered (/, /dashboard, /login, /register)")
 
     # ── Favicon ───────────────────────────────────────────────
