@@ -231,7 +231,7 @@ def create_app() -> FastAPI:
             )
 
         @app.get("/api_keys", response_class=HTMLResponse, include_in_schema=False)
-        async def api_keys_page(request: Request)
+        async def api_keys_page(request: Request):
             return templates.TemplateResponse(
                 "auth/api_keys.html",
                 {"request": request, "settings": settings }
