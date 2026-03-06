@@ -391,26 +391,3 @@ async def health_check() -> Dict[str, Union[bool, str]]:
             "status": "error",
             "error": str(e)
         }
-
-# Add these methods to your redis_client.py
-
-async def subscribe(self, channel: str, callback):
-    """Subscribe to a Redis channel."""
-    pubsub = self.client.pubsub()
-    await pubsub.subscribe(channel)
-    # Store callback for message handling
-    self._callbacks[channel] = callback
-    return pubsub
-
-async def unsubscribe(self, channel: str):
-    """Unsubscribe from a Redis channel."""
-    if channel in self._callbacks:
-        del self._callbacks[channel]
-
-async def publish(self, channel: str, message: str):
-    """Publish a message to a Redis channel."""
-    return await self.client.publish(channel, message)
-
-def get_pubsub(self):
-    """Get Redis pubsub instance."""
-    return self.client.pubsub()
