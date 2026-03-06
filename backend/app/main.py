@@ -259,6 +259,13 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"detail": "Internal server error. Our team has been notified."},
         )
+
+    # Add to the bottom of main.py, right before 'return app'
+print("\n" + "="*50)
+print("📋 REGISTERED ROUTES:")
+for route in app.routes:
+    print(f"  {route.path}")
+print("="*50 + "\n")
     
     return app
 
