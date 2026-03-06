@@ -179,6 +179,15 @@ async def github_callback(code: str, state: str, response: Response):
     GitHub OAuth callback.
     Exchange the authorization code for an access token, then upsert the user.
     """
+    # DEBUG: Log the incoming request
+    logger.info("="*50)
+    logger.info("GITHUB CALLBACK RECEIVED")
+    logger.info(f"Code (first 10 chars): {code[:10] if code else 'None'}")
+    logger.info(f"State: {state}")
+    logger.info(f"Client ID configured: {settings.github_client_id[:5] if settings.github_client_id else 'Not set'}...")
+    logger.info(f"Client Secret configured: {'Yes' if settings.github_client_secret else 'No'}")
+    logger.info(f"Redirect URI: {settings.github_redirect_uri}")
+    logger.info("="*50)
     async with httpx.AsyncClient() as client:
         # Exchange code for token
         token_resp = await client.post(
