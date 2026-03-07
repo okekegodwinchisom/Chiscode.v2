@@ -15,9 +15,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        github_app_id: str = Field(default="", env="GITHUB_APP_ID"),
-        github_private_key: str = Field(default="", env="GITHUB_PRIVATE_KEY"),
-        github_installation_id: Optional[str] = Field(default=None, env="GITHUB_INSTALLATION_ID"),
+        
     )
 
     # ── App ──────────────────────────────────────────────────
