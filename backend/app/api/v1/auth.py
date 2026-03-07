@@ -239,3 +239,24 @@ async def github_callback(code: str, state: str, response: Response):
 
     logger.info("GitHub OAuth login", user_id=str(user.id), username=gh_user["login"])
     return redirect
+
+@router.get("/github")
+async def github_login(request: Request):
+    """Redirect the user to GitHub's authorization page."""
+    if not settings.github_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub OAuth is not configured.",
+        )
+
+    params = {
+        "client_id":    settings.github_client_id,
+        "redirect_uri": settings.github_redirect_uri,
+        "scope":        "read:user user:email",
+        "state":        "chiscode_oauth",
+    }
+    url = f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}"
+
+    logger.info("Redirecting to GitHub OAuth", redirect_uri=settings.github_redirect_uri)
+
+    return RedirectResponse(url, status_code=302)    
