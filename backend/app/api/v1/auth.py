@@ -4,7 +4,10 @@ Handles email/password auth, GitHub OAuth, JWT refresh, and logout.
 """
 from datetime import timezone
 from urllib.parse import urlencode
-
+import jwt  # PyJWT package
+import time
+from pathlib import Path
+import os
 import httpx
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
