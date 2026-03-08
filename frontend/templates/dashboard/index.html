@@ -233,7 +233,7 @@ async function loadUsage() {
 
 // ── Load projects ─────────────────────────────────────────────
 async function loadProjects() {
-  const res = await apiFetch('/project/');
+  const res = await apiFetch('/projects/');
   if (!res) return;
   const projects = await res.json();
   const el = document.getElementById('projects-list');
@@ -276,7 +276,7 @@ async function startGeneration() {
   const body = { prompt };
   if (name) body.project_name = name;
 
-  const res = await apiFetch('/project/generate', {
+  const res = await apiFetch('/projects/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
