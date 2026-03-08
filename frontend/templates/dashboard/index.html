@@ -63,15 +63,15 @@
 
   <div class="sidebar__section">
     <div class="sidebar__label">Account</div>
-    <a href="/profile" class="sidebar__item">
+    <a href="#" class="sidebar__item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Profile
     </a>
-    <a href="/billing" class="sidebar__item">
+    <a href="#" class="sidebar__item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Billing
     </a>
-    <a href="/api_keys" class="sidebar__item">
+    <a href="#" class="sidebar__item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
       API Keys
     </a>
@@ -309,24 +309,97 @@ async function startGeneration() {
 
   addLog('Agent starting…');
 
-  // WebSocket for live progress
-  const ws = new WebSocket(data.ws_url);
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'log')       addLog(msg.message);
-    if (msg.type === 'status')    addLog('→ ' + msg.status.toUpperCase() + ': ' + msg.message, msg.status);
-    if (msg.type === 'file_done') addLog('✓ ' + msg.filename + ' (' + msg.size + ' chars)', 'complete');
-    if (msg.type === 'complete') {
-      addLog('🚀 Complete! Refreshing…', 'complete');
-      ws.close();
-      setTimeout(() => { loadProjects(); document.getElementById('generate-modal').style.display='none'; btn.disabled=false; btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project'; }, 2000);
-    }
-    if (msg.type === 'error') {
-      addLog('❌ ' + msg.message, 'error');
-      btn.disabled = false;
-    }
-  };
-  ws.onerror = () => addLog('WebSocket error — check network.', 'error');
+  // Poll project status — fallback when WebSocket misses events
+  // (agent may finish before WS connects, or WS may be blocked by proxy)
+  function pollUntilDone(projectId, intervalMs = 3000) {
+    const timer = setInterval(async () => {
+      const r = await apiFetch('/projects/' + projectId);
+      if (!r) { clearInterval(timer); return; }
+      const p = await r.json();
+      if (p.status === 'awaiting_confirmation' || p.status === 'complete') {
+        clearInterval(timer);
+        addLog('🚀 Complete! (' + Object.keys(p.file_tree || {}).length + ' files generated)', 'complete');
+        setTimeout(() => {
+          loadProjects();
+          document.getElementById('generate-modal').style.display = 'none';
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
+        }, 1500);
+      } else if (p.status === 'failed') {
+        clearInterval(timer);
+        addLog('❌ Generation failed: ' + (p.error_message || 'unknown error'), 'error');
+        btn.disabled = false;
+      } else {
+        // Show latest log entry while polling
+        const log = p.generation_log || [];
+        if (log.length) addLog(log[log.length - 1]);
+      }
+    }, intervalMs);
+    return timer;
+  }
+
+  // Try WebSocket first for real-time updates, fall back to polling on any error
+  let pollTimer = null;
+  let wsConnected = false;
+
+  try {
+    const ws = new WebSocket(data.ws_url);
+
+    ws.onopen = () => {
+      wsConnected = true;
+      addLog('Live connection established…');
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'log')       addLog(msg.message);
+      if (msg.type === 'status')    addLog('→ ' + msg.status.toUpperCase() + ': ' + msg.message, msg.status);
+      if (msg.type === 'file_done') addLog('✓ ' + msg.filename + ' (' + msg.size + ' chars)', 'complete');
+      if (msg.type === 'complete') {
+        clearInterval(pollTimer);
+        addLog('🚀 Complete! Refreshing…', 'complete');
+        ws.close();
+        setTimeout(() => {
+          loadProjects();
+          document.getElementById('generate-modal').style.display = 'none';
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
+        }, 1500);
+      }
+      if (msg.type === 'error') {
+        clearInterval(pollTimer);
+        addLog('❌ ' + msg.message, 'error');
+        btn.disabled = false;
+      }
+    };
+
+    ws.onerror = () => {
+      if (!wsConnected) {
+        addLog('WebSocket unavailable — switching to polling…');
+        pollTimer = pollUntilDone(data.project_id);
+      }
+    };
+
+    ws.onclose = (e) => {
+      // If closed without receiving complete/error, start polling to catch result
+      if (wsConnected && btn.disabled) {
+        addLog('Connection closed — polling for result…');
+        pollTimer = pollUntilDone(data.project_id);
+      }
+    };
+
+    // Safety net: if WS hasn't opened in 4s, fall back to polling
+    setTimeout(() => {
+      if (!wsConnected) {
+        addLog('Connecting… switching to polling.');
+        pollTimer = pollUntilDone(data.project_id);
+      }
+    }, 4000);
+
+  } catch (err) {
+    addLog('WebSocket not supported — polling instead.');
+    pollTimer = pollUntilDone(data.project_id);
+  }
 }
 
 // ── Logout ────────────────────────────────────────────────────
