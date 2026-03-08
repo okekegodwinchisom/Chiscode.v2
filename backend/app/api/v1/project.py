@@ -174,7 +174,7 @@ async def start_generation(
     # wss:// in production (HF Spaces is HTTPS), ws:// in dev
     base = settings.frontend_base_url.split("://")[-1]
     scheme = "wss" if settings.is_production else "ws"
-    ws_url = f"{scheme}://{base}/api/v1/projects/ws/{project_id}"
+    ws_url = f"{scheme}://{base}/api/v1/project/ws/{project_id}"
 
     return GenerationStarted(
         project_id=project_id,
