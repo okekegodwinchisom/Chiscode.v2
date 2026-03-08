@@ -3,844 +3,339 @@
 
 {% block head %}
 <style>
-/* ── Page header ── */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-}
-.page-header__title { 
-  font-family: var(--font-display); 
-  font-size: 1.6rem; 
-  font-weight: 800; 
-  letter-spacing: -.03em; 
-  margin-bottom: .15rem; 
-}
-.page-header__sub { 
-  font-size: .78rem; 
-  color: var(--ghost); 
-}
-
-/* ── Stats grid ── */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-.stat-card {
-  background: var(--raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.2rem;
-}
-.stat-card__label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  color: var(--ghost);
-  margin-bottom: 0.5rem;
-}
-.stat-card__value {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin-bottom: 0.2rem;
-}
-.stat-card__sub {
-  font-size: 0.7rem;
-  color: var(--muted);
-}
-
-/* ── Project rows ── */
-.project-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: .9rem 1.1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition: all .15s ease;
-  text-decoration: none;
-  margin-bottom: 0.65rem;
-}
-.project-row:hover {
-  border-color: var(--border-bright);
-  background: var(--raised);
-  transform: translateX(2px);
-}
-.project-row__icon {
-  width: 36px; 
-  height: 36px;
-  background: rgba(0,229,255,.08);
-  border: 1px solid rgba(0,229,255,.15);
-  border-radius: 8px;
-  display: flex; 
-  align-items: center; 
-  justify-content: center;
-  font-size: .95rem;
-  flex-shrink: 0;
-}
-.project-row__name { 
-  font-size: .88rem; 
-  font-weight: 600; 
-  color: var(--white); 
-  margin-bottom: .1rem; 
-}
-.project-row__meta { 
-  font-size: .72rem; 
-  color: var(--ghost); 
-  font-family: var(--font-code); 
-}
-.project-row__actions { 
-  margin-left: auto; 
-  display: flex; 
-  align-items: center; 
-  gap: .5rem; 
-  flex-shrink: 0; 
-}
-
-/* ── Empty state ── */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  text-align: center;
-  gap: 1rem;
-  color: var(--ghost);
-}
-.empty-state__icon { 
-  font-size: 2.8rem; 
-  opacity: .4; 
-}
-.empty-state__title { 
-  font-family: var(--font-display); 
-  font-size: 1rem; 
-  font-weight: 700; 
-  color: var(--silver); 
-}
-.empty-state__sub { 
-  font-size: .8rem; 
-  color: var(--ghost); 
-}
-
-/* ── Generate modal ── */
-.modal-overlay {
-  position: fixed; 
-  inset: 0;
-  z-index: 100;
-  background: rgba(0,0,0,.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  animation: fade-in .2s ease;
-}
-.modal-overlay.active {
-  display: flex;
-}
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-.modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.2rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-}
-.modal__title {
-  display: flex;
-  align-items: center;
-  font-size: 1rem;
-  font-weight: 600;
-}
-.modal__close {
-  background: none;
-  border: none;
-  color: var(--ghost);
-  font-size: 1.5rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0.5rem;
-}
-.modal__close:hover { 
-  color: var(--white); 
-}
-.modal__body { 
-  padding: 1.5rem; 
-}
-
-/* ── Badge ── */
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 99px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.badge-ghost { background: var(--border); color: var(--ghost); }
-.badge-electric { background: var(--electric); color: black; }
-.badge-neon { background: var(--neon); color: black; }
-.badge-amber { background: var(--amber); color: black; }
-.badge-violet { background: var(--violet); color: white; }
-.badge-teal { background: var(--teal); color: black; }
-.badge-plasma { background: var(--plasma); color: white; }
-
-/* ── Loading skeleton ── */
-.skeleton {
-  background: linear-gradient(90deg, var(--border) 25%, var(--border-bright) 50%, var(--border) 75%);
-  background-size: 200% 100%;
-  animation: skeleton 1.5s infinite;
-  border-radius: var(--radius-sm);
-}
-.skeleton--text { height: 1em; width: 100%; }
-.skeleton--card { height: 100px; }
-@keyframes skeleton {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ── Message boxes ── */
-.error-message, .success-message {
-  padding: 1rem;
-  border-radius: var(--radius);
-  margin-bottom: 1rem;
-  text-align: center;
-  display: none;
-}
-.error-message {
-  background: rgba(255, 70, 70, 0.1);
-  border: 1px solid var(--plasma);
-  color: var(--plasma);
-}
-.success-message {
-  background: rgba(0, 255, 0, 0.1);
-  border: 1px solid var(--neon);
-  color: var(--neon);
-}
-
-/* ── Spinner ── */
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 0.8s linear infinite;
-  margin-right: 8px;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Sidebar overlay for mobile ── */
-@media (max-width: 768px) {
-  .sidebar--open::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 9;
-  }
-}
-
-/* ── Utilities ── */
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+  .stat-card__label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ghost); margin-bottom: 0.4rem; }
+  .stat-card__value { font-family: var(--font-display); font-size: 2rem; font-weight: 800; color: var(--white); }
+  .stat-card__sub { font-size: 0.75rem; color: var(--ghost); margin-top: 0.2rem; }
+  .project-row { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); transition: all 0.15s ease; margin-bottom: 0.75rem; }
+  .project-row:hover { border-color: var(--muted); background: var(--raised); }
+  .project-row__name { font-weight: 700; font-size: 0.9rem; color: var(--white); }
+  .project-row__meta { font-size: 0.75rem; color: var(--ghost); margin-top: 0.1rem; }
+  .project-row__actions { margin-left: auto; display: flex; gap: 0.5rem; }
+  .empty-state { text-align: center; padding: 3rem; color: var(--ghost); }
+  .empty-state__icon { font-size: 3rem; margin-bottom: 1rem; }
+  .usage-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 0.5rem; }
+  .usage-bar__fill { height: 100%; background: var(--electric); border-radius: 2px; transition: width 0.3s ease; }
 </style>
-
-<!-- Alpine.js for reactive state -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 {% endblock %}
 
 {% block body %}
-<div x-data="{ sidebarOpen: false }">
-
-<!-- ── Nav ── -->
+<!-- Nav -->
 <nav class="nav">
   <button
-    class="nav__menu-btn"
     @click="sidebarOpen = !sidebarOpen"
+    style="background:none;border:none;color:var(--ghost);cursor:pointer;padding:0.4rem;margin-right:0.75rem;display:flex"
     aria-label="Toggle sidebar"
-    aria-expanded="false"
-    :aria-expanded="sidebarOpen.toString()"
   >
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <line x1="3" y1="12" x2="21" y2="12"/>
-      <line x1="3" y1="6"  x2="21" y2="6"/>
-      <line x1="3" y1="18" x2="21" y2="18"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
     </svg>
   </button>
-
-  <a href="/" class="nav__logo">Chis<em>Code</em></a>
-  <span class="nav__spacer"></span>
-
+  <a href="/" class="nav__logo">Chis<span>Code</span></a>
   <div class="nav__links">
-    <span id="nav-plan-badge" class="badge badge-ghost">···</span>
-    <button id="logoutBtn" class="nav__link" aria-label="Log out">Log Out</button>
+    <span class="badge badge-ghost" id="plan-badge">Free</span>
+    <a href="#"
+      id="logout-btn"
+      hx-post="/api/v1/auth/logout"
+      hx-swap="none"
+      class="nav__link"
+    >Log Out</a>
   </div>
 </nav>
 
-<!-- ── Sidebar ── -->
+<!-- Sidebar -->
 <aside class="sidebar" :class="sidebarOpen ? 'sidebar--open' : ''">
   <div class="sidebar__section">
-    <span class="sidebar__label">Workspace</span>
+    <div class="sidebar__label">Workspace</div>
     <a href="/dashboard" class="sidebar__item sidebar__item--active">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      <span>Dashboard</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
     </a>
-    <a href="/projects" class="sidebar__item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <span>All Projects</span>
+    <a href="#" class="sidebar__item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+      All Projects
     </a>
-    <a href="/templates" class="sidebar__item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <span>Templates</span>
+    <a href="#" class="sidebar__item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Templates
     </a>
   </div>
-
-  <div class="sidebar__divider"></div>
 
   <div class="sidebar__section">
-    <span class="sidebar__label">Account</span>
+    <div class="sidebar__label">Account</div>
     <a href="/profile" class="sidebar__item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <span>Profile</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Profile
     </a>
     <a href="/billing" class="sidebar__item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-      <span>Billing</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Billing
     </a>
-    <a href="/api-keys" class="sidebar__item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-      <span>API Keys</span>
+    <a href="/api_keys" class="sidebar__item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+      API Keys
     </a>
   </div>
 
-  <!-- Usage widget -->
-  <div id="sidebar-usage" class="sidebar__usage">
-    <div class="skeleton skeleton--text" style="width:50%; margin-bottom:8px"></div>
-    <div class="skeleton" style="height:4px; margin-bottom:6px"></div>
-    <div class="skeleton skeleton--text" style="width:75%"></div>
+  <!-- Usage widget — rendered by JS, no HTMX swap -->
+  <div style="padding: 0 1.25rem; margin-top:auto; padding-top:2rem">
+    <div id="sidebar-usage" style="background:var(--raised); border:1px solid var(--border); border-radius:8px; padding:1rem">
+      <div class="skeleton" style="height:12px; width:60%; margin-bottom:8px"></div>
+      <div class="skeleton" style="height:6px; width:100%; margin-bottom:4px; border-radius:3px"></div>
+      <div class="skeleton" style="height:10px; width:50%"></div>
+    </div>
   </div>
 </aside>
 
-<!-- ── Main layout ── -->
+<!-- Main Content -->
 <div class="main-layout">
   <main class="main-content">
 
-    <!-- Page header -->
-    <div class="page-header reveal">
+    <!-- Header -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem">
       <div>
-        <h1 class="page-header__title">Dashboard</h1>
-        <p class="page-header__sub" id="welcome-message">Welcome back! Loading your data...</p>
+        <h1 style="font-size:1.75rem; font-weight:800; margin-bottom:0.2rem">Dashboard</h1>
+        <p style="color:var(--ghost); font-size:0.85rem">Build, iterate, and ship.</p>
       </div>
-      <button
-        class="btn btn-primary"
-        onclick="DashboardApp.openModal()"
-        aria-label="Create new project"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span class="btn-label">New Project</span>
+      <button class="btn btn-primary" onclick="document.getElementById('generate-modal').style.display='flex'">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Project
       </button>
     </div>
 
-    <!-- Stats row -->
-    <div id="stats-row" class="stats-grid reveal reveal-1">
-      <div class="stat-card skeleton skeleton--card"></div>
-      <div class="stat-card skeleton skeleton--card"></div>
-      <div class="stat-card skeleton skeleton--card"></div>
+    <!-- Stats — rendered by JS -->
+    <div id="stats-grid" class="grid-stats" style="margin-bottom:2rem">
+      <div class="stat-card skeleton" style="height:90px"></div>
+      <div class="stat-card skeleton" style="height:90px"></div>
+      <div class="stat-card skeleton" style="height:90px"></div>
     </div>
 
-    <!-- Projects section -->
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem" class="reveal reveal-2">
-      <h2 style="font-family:var(--font-display); font-size:1.05rem; font-weight:700">Recent Projects</h2>
-      <a href="/projects" class="btn btn-ghost btn-sm">View All</a>
+    <!-- Projects -->
+    <div style="margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between">
+      <h2 style="font-size:1.1rem; font-weight:700">Recent Projects</h2>
+      <a href="#" class="btn btn-ghost btn-sm">View All</a>
     </div>
 
-    <div id="projects-list" class="reveal reveal-3">
-      <div class="project-row skeleton" style="height:62px"></div>
-      <div class="project-row skeleton" style="height:62px"></div>
-      <div class="project-row skeleton" style="height:62px"></div>
+    <div id="projects-list">
+      <div class="project-row skeleton" style="height:70px; margin-bottom:0.75rem"></div>
+      <div class="project-row skeleton" style="height:70px; margin-bottom:0.75rem"></div>
+      <div class="project-row skeleton" style="height:70px"></div>
     </div>
-
-    <div id="dashboard-error" class="error-message" role="alert" aria-live="polite"></div>
 
   </main>
 </div>
 
 <!-- Generate Modal -->
-<div id="generate-modal" class="modal-overlay" onclick="DashboardApp.closeModalOnOverlay(event)" role="dialog" aria-labelledby="modal-title" aria-modal="true">
-  <div class="modal">
-    <div class="modal__header">
-      <h2 id="modal-title" class="modal__title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--electric)" stroke-width="2" style="margin-right:.4rem" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        New Project
-      </h2>
-      <button class="modal__close" onclick="DashboardApp.closeModal()" aria-label="Close modal">&times;</button>
+<div
+  id="generate-modal"
+  style="display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:1rem"
+  onclick="if(event.target===this) this.style.display='none'"
+>
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:640px; overflow:hidden">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:1.25rem 1.5rem; border-bottom:1px solid var(--border)">
+      <h3 style="font-family:var(--font-display); font-size:1.1rem; font-weight:700">New Project</h3>
+      <button onclick="document.getElementById('generate-modal').style.display='none'" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.4rem;line-height:1">×</button>
     </div>
-    <div class="modal__body">
-      <form id="projectForm" onsubmit="DashboardApp.handleProjectSubmit(event)">
-        <div class="form-group">
-          <label class="form-label" for="proj-name">
-            Project Name <span style="color:var(--muted)">(optional)</span>
-          </label>
-          <input 
-            id="proj-name" 
-            type="text" 
-            class="form-input" 
-            placeholder="my-awesome-app"
-            maxlength="100"
-          >
+
+    <div style="padding:1.5rem; display:flex; flex-direction:column; gap:1.25rem">
+      <div class="form-group">
+        <label class="form-label">Project Name (optional)</label>
+        <input id="gen-name" type="text" class="form-input" placeholder="my-awesome-app" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Describe Your Application *</label>
+        <textarea id="gen-prompt" class="form-input" rows="5"
+          placeholder="E.g. Build a task manager with user auth, real-time updates, and a MongoDB database."
+          style="min-height:140px"></textarea>
+      </div>
+
+      <div id="gen-log" style="display:none" class="terminal">
+        <div class="terminal__header">
+          <div class="terminal__dot" style="background:#FF5F57"></div>
+          <div class="terminal__dot" style="background:#FEBC2E"></div>
+          <div class="terminal__dot" style="background:#28C840"></div>
+          <span style="margin-left:0.5rem; font-size:0.72rem; color:var(--ghost)">generation log</span>
         </div>
-
-        <div class="form-group">
-          <label class="form-label" for="proj-prompt">
-            Describe your application <span style="color:var(--plasma)">*</span>
-          </label>
-          <textarea 
-            id="proj-prompt" 
-            class="form-input" 
-            placeholder="E.g. Build a task management app with user auth, real-time updates via WebSockets, PostgreSQL, and a React frontend with Tailwind CSS." 
-            rows="5" 
-            required
-            minlength="10"
-            maxlength="5000"
-          ></textarea>
+        <div id="gen-log-body" class="terminal__body" style="max-height:200px; overflow-y:auto">
+          <span class="terminal__cursor"></span>
         </div>
+      </div>
 
-        <div id="project-message" class="error-message" role="alert" aria-live="polite"></div>
+      <div id="gen-error" style="display:none; color:var(--plasma); font-size:0.82rem"></div>
 
-        <button type="submit" id="project-submit" class="btn btn-primary btn-lg btn-full">
-          Generate Project
-        </button>
-      </form>
+      <button id="gen-btn" class="btn btn-primary btn-lg" style="justify-content:center" onclick="startGeneration()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Generate Project
+      </button>
     </div>
   </div>
 </div>
+{% endblock %}
 
-</div>
-
+{% block scripts %}
 <script>
-// ============================================
-// Dashboard Application (Production Ready)
-// ============================================
+const API = '/api/v1';
+const STATUS_COLOR = {
+  complete: 'neon', failed: 'plasma', generating: 'electric',
+  pending: 'ghost', awaiting_confirmation: 'amber', self_healing: 'electric',
+  quality_check: 'electric', analyzing: 'electric', committing: 'amber'
+};
 
-const DashboardApp = (() => {
-  // Configuration
-  const CONFIG = {
-    API_BASE: '/api/v1',
-    REFRESH_INTERVAL: 30000,
-    MAX_RETRIES: 3,
-    RETRY_DELAY: 1000
-  };
-
-  // State
-  let refreshInterval = null;
-  let retryCount = 0;
-
-  // Utility: Escape HTML to prevent XSS
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // Utility: Fetch with retry
-  async function fetchWithRetry(url, options = {}, retries = CONFIG.MAX_RETRIES) {
-    try {
-      const response = await fetch(url, {
-        ...options,
-        credentials: 'include'
-      });
-
-      // Handle auth errors
-      if (response.status === 401) {
-        window.location.href = '/login';
-        throw new Error('Unauthorized');
-      }
-
-      return response;
-    } catch (error) {
-      if (retries > 0 && error.message !== 'Unauthorized') {
-        await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
-        return fetchWithRetry(url, options, retries - 1);
-      }
-      throw error;
-    }
-  }
-
-  // Show error message
-  function showError(message) {
-    const errorDiv = document.getElementById('dashboard-error');
-    if (!errorDiv) return;
-    
-    errorDiv.textContent = message;
-    errorDiv.className = 'error-message';
-    errorDiv.style.display = 'block';
-    
-    setTimeout(() => {
-      errorDiv.style.display = 'none';
-    }, 5000);
-  }
-
-  // Show success message
-  function showSuccess(message) {
-    const messageDiv = document.getElementById('project-message');
-    if (!messageDiv) return;
-    
-    messageDiv.textContent = message;
-    messageDiv.className = 'success-message';
-    messageDiv.style.display = 'block';
-  }
-
-  // Load all dashboard data
-  async function loadDashboardData() {
-    try {
-      await Promise.all([
-        loadUserProfile(),
-        loadUsageStats(),
-        loadProjects()
-      ]);
-      retryCount = 0;
-    } catch (error) {
-      console.error('Dashboard load error:', error);
-      retryCount++;
-      
-      if (retryCount < CONFIG.MAX_RETRIES) {
-        setTimeout(loadDashboardData, CONFIG.RETRY_DELAY * retryCount);
-      } else {
-        showError('Failed to load dashboard data. Please refresh the page.');
-      }
-    }
-  }
-
-  // Load user profile
-  async function loadUserProfile() {
-    try {
-      const response = await fetchWithRetry(`${CONFIG.API_BASE}/users/me`);
-      
-      if (response.ok) {
-        const user = await response.json();
-        
-        // Update plan badge
-        const badge = document.getElementById('nav-plan-badge');
-        if (badge) {
-          badge.textContent = user.plan.toUpperCase();
-          
-          const badgeClasses = {
-            free: 'badge-ghost',
-            basic: 'badge-electric',
-            pro: 'badge-neon',
-            yearly: 'badge-amber'
-          };
-          badge.className = `badge ${badgeClasses[user.plan] || 'badge-ghost'}`;
-        }
-        
-        // Update welcome message
-        const welcome = document.getElementById('welcome-message');
-        if (welcome) {
-          const username = user.username || user.email || '';
-          welcome.textContent = username 
-            ? `Welcome back, ${escapeHtml(username)}!`
-            : 'Welcome back!';
-        }
-      } else {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to load profile');
-      }
-    } catch (error) {
-      console.error('Profile load error:', error);
-      throw error;
-    }
-  }
-
-  // Load usage statistics
-  async function loadUsageStats() {
-    try {
-      const response = await fetchWithRetry(`${CONFIG.API_BASE}/users/me/usage`);
-      
-      if (response.ok) {
-        const usage = await response.json();
-        
-        // Update stats row
-        const statsRow = document.getElementById('stats-row');
-        if (statsRow) {
-          statsRow.innerHTML = `
-            <div class="stat-card">
-              <div class="stat-card__label">Requests Today</div>
-              <div class="stat-card__value">${escapeHtml(usage.used_today.toString())}</div>
-              <div class="stat-card__sub">of ${usage.daily_limit.toLocaleString()} / day</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-card__label">Remaining</div>
-              <div class="stat-card__value" style="color:var(--electric)">${usage.remaining.toLocaleString()}</div>
-              <div class="stat-card__sub">Resets at midnight UTC</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-card__label">Plan</div>
-              <div class="stat-card__value" style="font-size:1.25rem;text-transform:capitalize">${escapeHtml(usage.plan)}</div>
-              <div class="stat-card__sub"><a href="/billing">Upgrade →</a></div>
-            </div>
-          `;
-        }
-        
-        // Update sidebar usage
-        const usedPct = Math.min(100, Math.round((usage.used_today / usage.daily_limit) * 100));
-        const sidebarUsage = document.getElementById('sidebar-usage');
-        if (sidebarUsage) {
-          sidebarUsage.innerHTML = `
-            <div class="sidebar__usage-label">${escapeHtml(usage.plan.toUpperCase())} Plan</div>
-            <div class="sidebar__usage-bar">
-              <div class="sidebar__usage-fill" style="width:${usedPct}%"></div>
-            </div>
-            <div class="sidebar__usage-text">
-              <span>${escapeHtml(usage.used_today.toString())} used</span>
-              <span>${escapeHtml(usage.remaining.toString())} left</span>
-            </div>
-          `;
-        }
-      }
-    } catch (error) {
-      console.error('Usage load error:', error);
-      throw error;
-    }
-  }
-
-  // Load projects
-  async function loadProjects() {
-    try {
-      const response = await fetchWithRetry(`${CONFIG.API_BASE}/projects/?limit=5`);
-      
-      if (response.ok) {
-        const projects = await response.json();
-        const list = document.getElementById('projects-list');
-        
-        if (!list) return;
-        
-        if (!projects || projects.length === 0) {
-          list.innerHTML = `
-            <div class="empty-state">
-              <div class="empty-state__icon" aria-hidden="true">⚡</div>
-              <div class="empty-state__title">No projects yet</div>
-              <p class="empty-state__sub">Click <strong style="color:var(--white)">New Project</strong> to start building.</p>
-            </div>
-          `;
-          return;
-        }
-        
-        // Status badge classes
-        const badgeClass = (status) => ({
-          pending: 'badge-ghost',
-          analyzing: 'badge-amber',
-          generating: 'badge-electric',
-          quality_check: 'badge-violet',
-          self_healing: 'badge-amber',
-          awaiting_confirmation: 'badge-amber',
-          committing: 'badge-teal',
-          complete: 'badge-neon',
-          failed: 'badge-plasma',
-          cancelled: 'badge-ghost',
-        }[status] || 'badge-ghost');
-        
-        // Icons for projects
-        const icons = ['🌐', '⚡', '🔧', '🎯', '📦', '🚀', '💡', '🛠️'];
-        const randIcon = () => icons[Math.floor(Math.random() * icons.length)];
-        
-        list.innerHTML = projects.map(p => `
-          <div class="project-row">
-            <div class="project-row__icon" aria-hidden="true">${randIcon()}</div>
-            <div style="flex:1; min-width:0">
-              <div class="project-row__name truncate">${escapeHtml(p.name)}</div>
-              <div class="project-row__meta">
-                ${p.file_count || 0} files · 
-                v${p.current_version} · 
-                ${new Date(p.created_at).toLocaleDateString()}
-              </div>
-            </div>
-            <span class="badge ${badgeClass(p.status)}">${escapeHtml(p.status.replace(/_/g, ' '))}</span>
-            <div class="project-row__actions">
-              <a href="/projects/${encodeURIComponent(p.id)}" class="btn btn-ghost btn-xs">Open</a>
-            </div>
-          </div>
-        `).join('');
-      }
-    } catch (error) {
-      console.error('Projects load error:', error);
-      throw error;
-    }
-  }
-
-  // Modal functions
-  function openModal() {
-    const modal = document.getElementById('generate-modal');
-    if (modal) {
-      modal.classList.add('active');
-      document.getElementById('proj-prompt')?.focus();
-    }
-  }
-
-  function closeModal() {
-    const modal = document.getElementById('generate-modal');
-    if (modal) {
-      modal.classList.remove('active');
-    }
-    
-    // Reset form
-    const form = document.getElementById('projectForm');
-    if (form) form.reset();
-    
-    const messageDiv = document.getElementById('project-message');
-    if (messageDiv) messageDiv.style.display = 'none';
-  }
-
-  function closeModalOnOverlay(event) {
-    if (event.target.id === 'generate-modal') {
-      closeModal();
-    }
-  }
-
-  // Handle logout
-  async function handleLogout() {
-    try {
-      await fetch(`${CONFIG.API_BASE}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      window.location.href = '/login';
-    }
-  }
-
-  // Handle project form submission
-  async function handleProjectSubmit(e) {
-    e.preventDefault();
-    
-    const projectName = document.getElementById('proj-name')?.value.trim();
-    const prompt = document.getElementById('proj-prompt')?.value.trim();
-    const submitBtn = document.getElementById('project-submit');
-    const messageDiv = document.getElementById('project-message');
-    
-    if (messageDiv) messageDiv.style.display = 'none';
-    
-    if (!prompt || prompt.length < 10) {
-      if (messageDiv) {
-        messageDiv.textContent = 'Please describe your application (minimum 10 characters)';
-        messageDiv.className = 'error-message';
-        messageDiv.style.display = 'block';
-      }
-      return;
-    }
-    
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="spinner"></span> Generating...';
-    }
-    
-    try {
-      const response = await fetchWithRetry(`${CONFIG.API_BASE}/projects/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_name: projectName || undefined,
-          prompt: prompt
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        showSuccess('✨ Project generation started!');
-        
-        setTimeout(() => {
-          closeModal();
-          loadProjects(); // Refresh projects list
-        }, 2000);
-      } else {
-        if (messageDiv) {
-          messageDiv.textContent = data.detail || 'Failed to create project';
-          messageDiv.className = 'error-message';
-          messageDiv.style.display = 'block';
-        }
-      }
-    } catch (error) {
-      console.error('Project creation error:', error);
-      if (messageDiv) {
-        messageDiv.textContent = 'Network error. Please try again.';
-        messageDiv.className = 'error-message';
-        messageDiv.style.display = 'block';
-      }
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = 'Generate Project';
-      }
-    }
-  }
-
-  // Initialize
-  function init() {
-    // Load data
-    loadDashboardData();
-    
-    // Setup logout handler
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', handleLogout);
-    }
-    
-    // Setup auto-refresh
-    refreshInterval = setInterval(loadDashboardData, CONFIG.REFRESH_INTERVAL);
-    
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
-    });
-  }
-
-  // Public API
-  return {
-    init,
-    openModal,
-    closeModal,
-    closeModalOnOverlay,
-    handleProjectSubmit,
-    loadProjects
-  };
-})();
-
-// Initialize on DOM ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', DashboardApp.init);
-} else {
-  DashboardApp.init();
+// ── Auth helper ───────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, { credentials: 'include', ...opts });
+  if (res.status === 401) { window.location.href = '/login'; return null; }
+  return res;
 }
+
+// ── Load usage + plan ─────────────────────────────────────────
+async function loadUsage() {
+  const res = await apiFetch('/users/me/usage');
+  if (!res) return;
+  const d = await res.json();
+
+  // Stats grid
+  const pct = Math.round((d.used_today / d.daily_limit) * 100) || 0;
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-card__label">Requests Today</div>
+      <div class="stat-card__value">${d.used_today}</div>
+      <div class="stat-card__sub">of ${d.daily_limit} / day</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Remaining</div>
+      <div class="stat-card__value" style="color:var(--electric)">${d.remaining}</div>
+      <div class="stat-card__sub">Resets at midnight UTC</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Plan</div>
+      <div class="stat-card__value" style="font-size:1.25rem;text-transform:capitalize">${d.plan}</div>
+      <div class="stat-card__sub"><a href="#" style="color:var(--electric)">Upgrade →</a></div>
+    </div>
+  `;
+
+  // Sidebar usage widget
+  document.getElementById('sidebar-usage').innerHTML = `
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--ghost);margin-bottom:0.5rem">
+      ${d.plan.toUpperCase()} PLAN
+    </div>
+    <div class="usage-bar"><div class="usage-bar__fill" style="width:${pct}%"></div></div>
+    <div style="display:flex;justify-content:space-between;margin-top:0.4rem;font-size:0.75rem;color:var(--ghost)">
+      <span>${d.used_today} used</span><span>${d.remaining} left</span>
+    </div>
+  `;
+
+  // Nav badge
+  const badge = document.getElementById('plan-badge');
+  badge.textContent = d.plan.toUpperCase();
+  badge.className = 'badge badge-' + (d.plan === 'pro' || d.plan === 'yearly' ? 'neon' : d.plan === 'basic' ? 'electric' : 'ghost');
+}
+
+// ── Load projects ─────────────────────────────────────────────
+async function loadProjects() {
+  const res = await apiFetch('/projects/');
+  if (!res) return;
+  const projects = await res.json();
+  const el = document.getElementById('projects-list');
+
+  if (!Array.isArray(projects) || projects.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state__icon">⚡</div>
+        <p style="font-size:0.9rem">No projects yet. Click <strong style="color:var(--white)">New Project</strong> to start building.</p>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = projects.map(p => `
+    <div class="project-row">
+      <div>
+        <div class="project-row__name">${p.name}</div>
+        <div class="project-row__meta">${p.file_count} files · v${p.current_version} · ${new Date(p.updated_at).toLocaleDateString()}</div>
+      </div>
+      <span class="badge badge-${STATUS_COLOR[p.status] || 'ghost'}">${p.status.replace(/_/g,' ')}</span>
+      <div class="project-row__actions">
+        <a href="/projects/${p.id}" class="btn btn-ghost btn-sm">Open</a>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Generate project ──────────────────────────────────────────
+async function startGeneration() {
+  const prompt = document.getElementById('gen-prompt').value.trim();
+  const name   = document.getElementById('gen-name').value.trim();
+  if (!prompt) { alert('Please describe your application first.'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  const errEl = document.getElementById('gen-error');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  errEl.style.display = 'none';
+
+  const body = { prompt };
+  if (name) body.project_name = name;
+
+  const res = await apiFetch('/projects/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res) return;
+  if (!res.ok) {
+    const err = await res.json();
+    errEl.textContent = err.detail || 'Generation failed.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Generate Project';
+    return;
+  }
+
+  const data = await res.json();
+
+  // Show log terminal
+  const logEl  = document.getElementById('gen-log');
+  const logBody = document.getElementById('gen-log-body');
+  logEl.style.display = 'block';
+
+  function addLog(msg, cls = '') {
+    const line = document.createElement('div');
+    line.className = 'terminal__line' + (cls ? ' terminal__line--' + cls : '');
+    line.textContent = msg;
+    logBody.insertBefore(line, logBody.lastChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  addLog('Agent starting…');
+
+  // WebSocket for live progress
+  const ws = new WebSocket(data.ws_url);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'log')       addLog(msg.message);
+    if (msg.type === 'status')    addLog('→ ' + msg.status.toUpperCase() + ': ' + msg.message, msg.status);
+    if (msg.type === 'file_done') addLog('✓ ' + msg.filename + ' (' + msg.size + ' chars)', 'complete');
+    if (msg.type === 'complete') {
+      addLog('🚀 Complete! Refreshing…', 'complete');
+      ws.close();
+      setTimeout(() => { loadProjects(); document.getElementById('generate-modal').style.display='none'; btn.disabled=false; btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project'; }, 2000);
+    }
+    if (msg.type === 'error') {
+      addLog('❌ ' + msg.message, 'error');
+      btn.disabled = false;
+    }
+  };
+  ws.onerror = () => addLog('WebSocket error — check network.', 'error');
+}
+
+// ── Logout ────────────────────────────────────────────────────
+document.getElementById('logout-btn').addEventListener('htmx:afterRequest', () => {
+  window.location.href = '/login';
+});
+
+// ── Boot ──────────────────────────────────────────────────────
+loadUsage();
+loadProjects();
 </script>
 {% endblock %}
