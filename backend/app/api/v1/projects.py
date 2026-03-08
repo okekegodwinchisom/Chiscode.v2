@@ -1,19 +1,13 @@
 """
-ChisCode — Project Routes (Phase 2 — Agent wired)
-===================================================
-Changes from Phase 1:
-  - start_generation: kicks off run_generation_agent as a FastAPI BackgroundTask
-  - BackgroundTasks injected into the endpoint signature
-  - ws_url uses wss:// in production, ws:// in dev
-  - iterate_project: stubbed for Phase 4 (agent call placeholder added)
+ChisCode — Project Routes
+Generation, iteration, version control, and WebSocket progress streaming.
 """
 import json
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from app.agents.generation_agent import run_generation_agent
 from app.api.deps import check_rate_limit, get_current_user
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -30,13 +24,13 @@ from app.schemas.project import (
 )
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(prefix="/projects", tags=["projects"], redirect_slashes=False)
 
-# In-memory WebSocket manager — Phase 8 will move to Redis pub/sub
+# In-memory WebSocket connection manager (Phase 8 will move to Redis pub/sub)
 _active_connections: dict[str, list[WebSocket]] = {}
 
 
-# ── WebSocket ─────────────────────────────────────────────────────
+# ── WebSocket Manager ─────────────────────────────────────────
 
 async def ws_broadcast(project_id: str, message: dict) -> None:
     """Broadcast a JSON message to all WebSocket clients watching a project."""
@@ -55,8 +49,7 @@ async def ws_broadcast(project_id: str, message: dict) -> None:
 async def project_ws(websocket: WebSocket, project_id: str):
     """
     WebSocket endpoint for real-time generation progress.
-    The frontend connects here immediately after POST /generate.
-    Message types: log | status | file_done | complete | error
+    Clients connect here to receive live updates during code generation.
     """
     await websocket.accept()
     _active_connections.setdefault(project_id, []).append(websocket)
@@ -64,6 +57,7 @@ async def project_ws(websocket: WebSocket, project_id: str):
 
     try:
         while True:
+            # Keep-alive: echo ping messages
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
@@ -74,16 +68,16 @@ async def project_ws(websocket: WebSocket, project_id: str):
         logger.info("WebSocket disconnected", project_id=project_id)
 
 
-# ── Project CRUD ──────────────────────────────────────────────────
+# ── Project CRUD ──────────────────────────────────────────────
 
-@router.get("/", response_model=list[ProjectPublic])
+@router.get("/", response_model=list[ProjectPublic], response_model_by_alias=True)
 async def list_projects(
     current_user=Depends(get_current_user),
     skip: int = 0,
     limit: int = 20,
 ):
-    """List all projects for the authenticated user, newest first."""
-    coll   = projects_collection()
+    """List all projects for the authenticated user."""
+    coll = projects_collection()
     cursor = coll.find(
         {"user_id": str(current_user.id)},
         sort=[("created_at", -1)],
@@ -92,18 +86,20 @@ async def list_projects(
     )
     projects = []
     async for doc in cursor:
-        p   = ProjectInDB(**doc)
-        pub = ProjectPublic(**p.model_dump(by_alias=True), file_count=len(p.file_tree))
+        p = ProjectInDB(**doc)
+        pub = ProjectPublic(
+            **p.model_dump(by_alias=True),
+            file_count=len(p.file_tree),
+        )
         projects.append(pub)
     return projects
 
 
-@router.get("/{project_id}", response_model=ProjectDetail)
+@router.get("/{project_id}", response_model=ProjectDetail, response_model_by_alias=True)
 async def get_project(project_id: str, current_user=Depends(get_current_user)):
-    """Get full project details including file tree and generation log."""
-    doc = await projects_collection().find_one(
-        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
-    )
+    """Get full details of a single project."""
+    coll = projects_collection()
+    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
     p = ProjectInDB(**doc)
@@ -112,78 +108,56 @@ async def get_project(project_id: str, current_user=Depends(get_current_user)):
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, current_user=Depends(get_current_user)):
-    """Permanently delete a project (owner only)."""
-    result = await projects_collection().delete_one(
-        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
-    )
+    """Delete a project (owner only)."""
+    coll = projects_collection()
+    result = await coll.delete_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
 
-# ── Generation ────────────────────────────────────────────────────
+# ── Generation ────────────────────────────────────────────────
 
 @router.post("/generate", response_model=GenerationStarted, status_code=status.HTTP_202_ACCEPTED)
 async def start_generation(
-    req:              GenerateProjectRequest,
-    background_tasks: BackgroundTasks,
+    req: GenerateProjectRequest,
     current_user=Depends(check_rate_limit),
 ):
     """
-    Create a project record then launch the AI agent as a background task.
+    Start AI code generation for a new project.
 
-    Flow:
-      1. Insert project doc with status=pending
-      2. Return {project_id, ws_url} immediately (202)
-      3. Agent runs in background: analyze → generate → validate → heal? → complete
-      4. Frontend streams progress via WebSocket at ws_url
+    Creates a project record immediately, then runs the LangGraph agent
+    as a background task. Connect to the WebSocket URL for live progress.
     """
-    coll         = projects_collection()
-    project_name = req.project_name or f"project-{ObjectId()}"
+    coll = projects_collection()
 
+    project_name = req.project_name or f"project-{ObjectId()}"
     doc = {
-        "user_id":         str(current_user.id),
-        "name":            project_name,
-        "description":     req.prompt[:200],
+        "user_id": str(current_user.id),
+        "name": project_name,
+        "description": req.prompt[:200],
         "original_prompt": req.prompt,
-        "status":          "pending",
-        "file_tree":       {},
-        "generation_log":  ["Project created. Agent starting..."],
+        "status": "pending",
+        "file_tree": {},
+        "generation_log": ["Project created. Waiting for agent..."],
         "self_heal_attempts": 0,
         "current_version": 0,
-        "created_at":      datetime.now(tz=timezone.utc),
-        "updated_at":      datetime.now(tz=timezone.utc),
+        "created_at": datetime.now(tz=timezone.utc),
+        "updated_at": datetime.now(tz=timezone.utc),
     }
     if req.preferred_stack:
         doc["stack"] = req.preferred_stack.model_dump()
 
-    result     = await coll.insert_one(doc)
+    result = await coll.insert_one(doc)
     project_id = str(result.inserted_id)
 
-    # Kick off the LangGraph agent asynchronously
-    background_tasks.add_task(
-        run_generation_agent,
-        project_id=project_id,
-        user_id=str(current_user.id),
-        prompt=req.prompt,
-        project_name=project_name,
-        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
-    )
+    # TODO Phase 2: Kick off LangGraph agent as a background task
+    # background_tasks.add_task(run_generation_agent, project_id, req, current_user)
 
-    logger.info("Generation queued", project_id=project_id, user_id=str(current_user.id))
+    logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
 
-    # wss:// in production (HF Spaces is HTTPS), ws:// in dev
-    base = settings.frontend_base_url.split("://")[-1]
-    scheme = "wss" if settings.is_production else "ws"
-    ws_url = f"{scheme}://{base}/api/v1/projects/ws/{project_id}"
+    ws_url = f"ws://{settings.frontend_base_url.split('://')[-1]}/projects/ws/{project_id}"
+    return GenerationStarted(project_id=project_id, ws_url=ws_url)
 
-    return GenerationStarted(
-        project_id=project_id,
-        ws_url=ws_url,
-        message="Generation started. Connect to ws_url for live progress.",
-    )
-
-
-# ── Confirm / Cancel ──────────────────────────────────────────────
 
 @router.post("/{project_id}/confirm")
 async def confirm_project(
@@ -193,10 +167,10 @@ async def confirm_project(
 ):
     """
     User approves the generated project.
-    Phase 3 will trigger the GitHub commit here.
+    Phase 3: This will trigger the GitHub commit.
     """
     coll = projects_collection()
-    doc  = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
     if doc.get("status") != "awaiting_confirmation":
@@ -206,16 +180,17 @@ async def confirm_project(
         {"_id": ObjectId(project_id)},
         {"$set": {"status": "committing", "updated_at": datetime.now(tz=timezone.utc)}},
     )
-    await ws_broadcast(project_id, {
-        "type": "status", "status": "committing", "message": "Confirmed! (GitHub integration coming in Phase 3)"
-    })
-    return {"message": "Confirmed. GitHub integration coming in Phase 3."}
+
+    # TODO Phase 3: Trigger GitHub commit
+    await ws_broadcast(project_id, {"type": "status", "status": "committing", "message": "Committing to GitHub..."})
+    return {"message": "Confirmation received. Committing..."}
 
 
 @router.post("/{project_id}/cancel")
 async def cancel_project(project_id: str, current_user=Depends(get_current_user)):
-    """Cancel a pending or in-progress project."""
-    result = await projects_collection().update_one(
+    """Cancel a pending or awaiting-confirmation project."""
+    coll = projects_collection()
+    result = await coll.update_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)},
         {"$set": {"status": "cancelled", "updated_at": datetime.now(tz=timezone.utc)}},
     )
@@ -224,52 +199,45 @@ async def cancel_project(project_id: str, current_user=Depends(get_current_user)
     return {"message": "Project cancelled."}
 
 
-# ── Iteration ─────────────────────────────────────────────────────
-
 @router.post("/{project_id}/iterate", status_code=status.HTTP_202_ACCEPTED)
 async def iterate_project(
-    project_id:       str,
-    req:              IterateProjectRequest,
-    background_tasks: BackgroundTasks,
+    project_id: str,
+    req: IterateProjectRequest,
     current_user=Depends(check_rate_limit),
 ):
     """
-    Refine an existing project with a follow-up prompt.
-    Phase 4: will run the iteration agent (diff-aware generation).
+    Submit a refinement request for an existing project.
+    Phase 4: Runs the iteration agent.
     """
     coll = projects_collection()
-    doc  = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
-    if doc.get("status") not in ("complete", "awaiting_confirmation"):
+    if doc.get("status") not in ("complete",):
         raise HTTPException(status_code=400, detail="Project must be complete before iterating.")
 
+    # TODO Phase 4: Kick off iteration agent
     await coll.update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {"status": "analyzing", "updated_at": datetime.now(tz=timezone.utc)}},
     )
-
-    # TODO Phase 4: background_tasks.add_task(run_iteration_agent, project_id, req.prompt)
-    await ws_broadcast(project_id, {
-        "type": "status", "status": "analyzing",
-        "message": "Iteration agent coming in Phase 4.",
-    })
-
-    return {"message": "Iteration queued.", "project_id": project_id}
+    return {"message": "Iteration started.", "project_id": project_id}
 
 
-# ── Version Control ───────────────────────────────────────────────
+# ── Version Control ────────────────────────────────────────────
 
-@router.get("/{project_id}/versions", response_model=list[ProjectVersionPublic])
+@router.get("/{project_id}/versions", response_model=list[ProjectVersionPublic], response_model_by_alias=True)
 async def list_versions(project_id: str, current_user=Depends(get_current_user)):
-    """List all saved versions of a project."""
+    """List all committed versions of a project."""
+    # Verify ownership
     proj = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    cursor   = project_versions_collection().find({"project_id": project_id}, sort=[("version", -1)])
+    coll = project_versions_collection()
+    cursor = coll.find({"project_id": project_id}, sort=[("version", -1)])
     versions = []
     async for doc in cursor:
         versions.append(ProjectVersionPublic(**doc))
@@ -279,12 +247,16 @@ async def list_versions(project_id: str, current_user=Depends(get_current_user))
 @router.post("/{project_id}/rollback/{version}")
 async def rollback_to_version(
     project_id: str,
-    version:    int,
+    version: int,
     current_user=Depends(get_current_user),
 ):
-    """Restore a project to a previous version's file snapshot."""
+    """
+    Roll back a project to a previous version.
+    Phase 3: Restores from file_snapshot and optionally reverts GitHub.
+    """
+    # Verify ownership
     proj_coll = projects_collection()
-    proj      = await proj_coll.find_one(
+    proj = await proj_coll.find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not proj:
@@ -296,14 +268,19 @@ async def rollback_to_version(
     if not ver_doc:
         raise HTTPException(status_code=404, detail=f"Version {version} not found.")
 
+    # Restore file tree from snapshot
     await proj_coll.update_one(
         {"_id": ObjectId(project_id)},
-        {"$set": {
-            "file_tree":       ver_doc["file_snapshot"],
-            "current_version": version,
-            "status":          "complete",
-            "updated_at":      datetime.now(tz=timezone.utc),
-        }},
+        {
+            "$set": {
+                "file_tree": ver_doc["file_snapshot"],
+                "current_version": version,
+                "status": "complete",
+                "updated_at": datetime.now(tz=timezone.utc),
+            }
+        },
     )
+
+    # TODO Phase 3: Also revert GitHub repo to commit_sha
+
     return {"message": f"Rolled back to version {version}."}
-    
