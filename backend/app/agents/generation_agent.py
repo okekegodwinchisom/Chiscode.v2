@@ -105,7 +105,7 @@ async def _append_log(project_id: str, message: str) -> None:
 async def _ws(project_id: str, msg_type: str, **kwargs) -> None:
     """Send a WebSocket message to all clients watching this project."""
     try:
-        from app.api.v1.projects import ws_broadcast
+        from app.api.v1.project import ws_broadcast
         await ws_broadcast(project_id, {"type": msg_type, **kwargs})
     except Exception as exc:
         logger.warning("ws_broadcast failed", error=str(exc))
