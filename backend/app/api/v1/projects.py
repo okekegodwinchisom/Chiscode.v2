@@ -153,15 +153,7 @@ async def start_generation(
     project_id = str(result.inserted_id)
 
     # TODO Phase 2: Kick off LangGraph agent as a background task
-    # background_tasks.add_task(run_generation_agent, project_id, req, current_user)
-    background_tasks.add_task(
-        run_generation_agent,
-        project_id=project_id,
-        user_id=str(current_user.id),
-        prompt=req.prompt,
-        project_name=project_name,  
-        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None
-    )
+    background_tasks.add_task(run_generation_agent, project_id, req, current_user)
     
     logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
 
