@@ -292,7 +292,9 @@ async function startGeneration() {
     return;
   }
 
-  const projectId = res.headers.get('X-Project-Id');
+  const data = await res.json();
+const projectId = data.project_id;
+  
 
   // Show log terminal
   const logEl   = document.getElementById('gen-log');
@@ -340,7 +342,7 @@ async function startGeneration() {
             loadUsage();
             document.getElementById('generate-modal').style.display = 'none';
             resetBtn();
-            if (projectId) window.location.href = '/projects/' + projectId;
+            if (projectId) window.location.href = `${API}/projects/${projectId}`;
           }, 1500);
         }
         if (msg.event === 'error') {
