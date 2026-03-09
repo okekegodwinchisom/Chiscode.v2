@@ -25,13 +25,13 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserPublic,response_model_by_alias=True)
+@router.get("/me", response_model=UserPublic, response_model_by_alias=True)
 async def get_profile(current_user=Depends(get_current_user)):
     """Return the currently authenticated user's profile."""
     return UserPublic.model_validate(current_user.model_dump(by_alias=True))
 
 
-@router.get("/me/usage", response_model=UsageResponse,response_model_by_alias=True)
+@router.get("/me/usage", response_model=UsageResponse, response_model_by_alias=True)
 async def get_usage(current_user=Depends(get_current_user)):
     """Return today's request usage and plan limits."""
     today = date.today()
@@ -49,7 +49,7 @@ async def get_usage(current_user=Depends(get_current_user)):
     )
 
 
-@router.patch("/me", response_model=UserPublic,response_model_by_alias=True)
+@router.patch("/me", response_model=UserPublic, response_model_by_alias=True)
 async def update_profile(
     update_data: UserUpdate,
     current_user=Depends(get_current_user)
@@ -79,7 +79,7 @@ async def delete_account(current_user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to delete account")
 
 
-@router.post("/me/api-key", response_model=ApiKeyResponse,response_model_by_alias=True)
+@router.post("/me/api-key", response_model=ApiKeyResponse)
 async def generate_api_key(
     current_user=Depends(require_plan("pro", "yearly")),
 ):
@@ -123,7 +123,7 @@ async def get_api_key_status(
     }
 
 
-@router.get("/me/activity", response_model=dict,response_model_by_alias=True)
+@router.get("/me/activity", response_model=dict)
 async def get_recent_activity(
     limit: int = Query(10, ge=1, le=50),
     current_user=Depends(get_current_user)
@@ -140,7 +140,7 @@ async def get_recent_activity(
         return {"activities": []}
 
 
-@router.get("/me/stats", response_model=dict,response_model_by_alias=True)
+@router.get("/me/stats", response_model=dict)
 async def get_user_stats(current_user=Depends(get_current_user)):
     """Get user statistics (project count, total generations, etc.)."""
     try:
