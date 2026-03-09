@@ -1,6 +1,6 @@
 """
 ChisCode — Project Routes
-Generation, iteration, version control, and WebSocket progress streaming.
+Generation (SSE streaming), CRUD, version control.
 """
 import json
 from datetime import datetime, timezone
@@ -11,7 +11,6 @@ from fastapi.responses import StreamingResponse
 
 from app.agents.generation_agent import generate_project_stream
 from app.api.deps import check_rate_limit, get_current_user
-from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.mongodb import project_versions_collection, projects_collection
 from app.schemas.project import (
@@ -23,17 +22,17 @@ from app.schemas.project import (
     ProjectPublic,
     ProjectVersionPublic,
 )
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"], redirect_slashes=False)
 
-# In-memory WebSocket connection manager (Phase 8 will move to Redis pub/sub)
+# In-memory WebSocket manager — kept for future use, no-ops safely if unused
 _active_connections: dict[str, list[WebSocket]] = {}
 
 
-# ── WebSocket Manager ─────────────────────────────────────────
+# ── WebSocket (kept for compatibility) ───────────────────────────
 
 async def ws_broadcast(project_id: str, message: dict) -> None:
-    """Broadcast a JSON message to all WebSocket clients watching a project."""
     connections = _active_connections.get(project_id, [])
     dead = []
     for ws in connections:
@@ -47,17 +46,10 @@ async def ws_broadcast(project_id: str, message: dict) -> None:
 
 @router.websocket("/ws/{project_id}")
 async def project_ws(websocket: WebSocket, project_id: str):
-    """
-    WebSocket endpoint for real-time generation progress.
-    Clients connect here to receive live updates during code generation.
-    """
     await websocket.accept()
     _active_connections.setdefault(project_id, []).append(websocket)
-    logger.info("WebSocket connected", project_id=project_id)
-
     try:
         while True:
-            # Keep-alive: echo ping messages
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
@@ -65,10 +57,9 @@ async def project_ws(websocket: WebSocket, project_id: str):
         conns = _active_connections.get(project_id, [])
         if websocket in conns:
             conns.remove(websocket)
-        logger.info("WebSocket disconnected", project_id=project_id)
 
 
-# ── Project CRUD ──────────────────────────────────────────────
+# ── Project CRUD ──────────────────────────────────────────────────
 
 @router.get("/", response_model=list[ProjectPublic], response_model_by_alias=True)
 async def list_projects(
@@ -76,9 +67,8 @@ async def list_projects(
     skip: int = 0,
     limit: int = 20,
 ):
-    """List all projects for the authenticated user."""
-    coll = projects_collection()
-    cursor = coll.find(
+    """List all projects for the authenticated user, newest first."""
+    cursor = projects_collection().find(
         {"user_id": str(current_user.id)},
         sort=[("created_at", -1)],
         skip=skip,
@@ -87,19 +77,16 @@ async def list_projects(
     projects = []
     async for doc in cursor:
         p = ProjectInDB(**doc)
-        pub = ProjectPublic(
-            **p.model_dump(by_alias=True),
-            file_count=len(p.file_tree),
-        )
-        projects.append(pub)
+        projects.append(ProjectPublic(**p.model_dump(by_alias=True), file_count=len(p.file_tree)))
     return projects
 
 
 @router.get("/{project_id}", response_model=ProjectDetail, response_model_by_alias=True)
 async def get_project(project_id: str, current_user=Depends(get_current_user)):
-    """Get full details of a single project."""
-    coll = projects_collection()
-    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    """Get full project details including file tree and generation log."""
+    doc = await projects_collection().find_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
     p = ProjectInDB(**doc)
@@ -108,65 +95,77 @@ async def get_project(project_id: str, current_user=Depends(get_current_user)):
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, current_user=Depends(get_current_user)):
-    """Delete a project (owner only)."""
-    coll = projects_collection()
-    result = await coll.delete_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    """Permanently delete a project (owner only)."""
+    result = await projects_collection().delete_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
     if result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
 
-# ── Generation ────────────────────────────────────────────────
+# ── Generation (SSE) ──────────────────────────────────────────────
 
-@router.post("/generate", response_model=GenerationStarted, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/generate")
 async def start_generation(
-    background_tasks: BackgroundTasks,
     req: GenerateProjectRequest,
     current_user=Depends(check_rate_limit),
 ):
     """
-    Start AI code generation for a new project.
+    Create a project record then stream generation progress as SSE.
 
-    Creates a project record immediately, then runs the LangGraph agent
-    as a background task. Connect to the WebSocket URL for live progress.
+    The client reads the response body as a stream — no polling, no WebSocket.
+    Each chunk is a `data: {...}\\n\\n` SSE line with an `event` field:
+      log      — progress message
+      status   — status change  {status, message}
+      file     — file generated {filename, size}
+      issues   — quality notes  {issues: [...]}
+      complete — finished       {file_count}
+      error    — fatal          {message}
+
+    The X-Project-Id response header carries the new project's MongoDB _id
+    so the client can navigate to /projects/{id} on completion.
     """
-    coll = projects_collection()
-
     project_name = req.project_name or f"project-{ObjectId()}"
+
     doc = {
-        "user_id": str(current_user.id),
-        "name": project_name,
-        "description": req.prompt[:200],
-        "original_prompt": req.prompt,
-        "status": "pending",
-        "file_tree": {},
-        "generation_log": ["Project created. Waiting for agent..."],
+        "user_id":            str(current_user.id),
+        "name":               project_name,
+        "description":        req.prompt[:200],
+        "original_prompt":    req.prompt,
+        "status":             "pending",
+        "file_tree":          {},
+        "generation_log":     ["Agent starting..."],
         "self_heal_attempts": 0,
-        "current_version": 0,
-        "created_at": datetime.now(tz=timezone.utc),
-        "updated_at": datetime.now(tz=timezone.utc),
+        "current_version":    0,
+        "created_at":         datetime.now(tz=timezone.utc),
+        "updated_at":         datetime.now(tz=timezone.utc),
     }
     if req.preferred_stack:
         doc["stack"] = req.preferred_stack.model_dump()
 
-    result = await coll.insert_one(doc)
+    result     = await projects_collection().insert_one(doc)
     project_id = str(result.inserted_id)
 
-    # TODO Phase 2: Kick off LangGraph agent as a background task
-    background_tasks.add_task(
-        run_generation_agent,
-        project_id=project_id,
-        user_id=str(current_user.id),
-        prompt=req.prompt,
-        project_name=project_name,
-        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
+    logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
+
+    return StreamingResponse(
+        generate_project_stream(
+            project_id=project_id,
+            user_id=str(current_user.id),
+            prompt=req.prompt,
+            project_name=project_name,
+            preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "X-Project-Id":      project_id,
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",   # disables nginx buffering on HF Spaces
+        },
     )
 
-    logger.info("Generation queued", project_id=project_id, user_id=str(current_user.id))
 
-    base = settings.frontend_base_url.split("://")[-1]
-    scheme = "wss" if settings.is_production else "ws"
-    ws_url = f"{scheme}://{base}/api/v1/projects/ws/{project_id}"
-    return GenerationStarted(project_id=project_id, ws_url=ws_url)
+# ── Confirm / Cancel ──────────────────────────────────────────────
 
 @router.post("/{project_id}/confirm")
 async def confirm_project(
@@ -176,30 +175,27 @@ async def confirm_project(
 ):
     """
     User approves the generated project.
-    Phase 3: This will trigger the GitHub commit.
+    Phase 3 will trigger the GitHub commit here.
     """
-    coll = projects_collection()
-    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    doc = await projects_collection().find_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
     if doc.get("status") != "awaiting_confirmation":
         raise HTTPException(status_code=400, detail="Project is not awaiting confirmation.")
 
-    await coll.update_one(
+    await projects_collection().update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {"status": "committing", "updated_at": datetime.now(tz=timezone.utc)}},
     )
-
-    # TODO Phase 3: Trigger GitHub commit
-    await ws_broadcast(project_id, {"type": "status", "status": "committing", "message": "Committing to GitHub..."})
-    return {"message": "Confirmation received. Committing..."}
+    return {"message": "Confirmed. GitHub integration coming in Phase 3."}
 
 
 @router.post("/{project_id}/cancel")
 async def cancel_project(project_id: str, current_user=Depends(get_current_user)):
-    """Cancel a pending or awaiting-confirmation project."""
-    coll = projects_collection()
-    result = await coll.update_one(
+    """Cancel a pending or in-progress project."""
+    result = await projects_collection().update_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)},
         {"$set": {"status": "cancelled", "updated_at": datetime.now(tz=timezone.utc)}},
     )
@@ -208,6 +204,8 @@ async def cancel_project(project_id: str, current_user=Depends(get_current_user)
     return {"message": "Project cancelled."}
 
 
+# ── Iteration ─────────────────────────────────────────────────────
+
 @router.post("/{project_id}/iterate", status_code=status.HTTP_202_ACCEPTED)
 async def iterate_project(
     project_id: str,
@@ -215,38 +213,36 @@ async def iterate_project(
     current_user=Depends(check_rate_limit),
 ):
     """
-    Submit a refinement request for an existing project.
-    Phase 4: Runs the iteration agent.
+    Refine an existing project with a follow-up prompt.
+    Phase 4: will stream the iteration agent as SSE.
     """
-    coll = projects_collection()
-    doc = await coll.find_one({"_id": ObjectId(project_id), "user_id": str(current_user.id)})
+    doc = await projects_collection().find_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
-    if doc.get("status") not in ("complete",):
+    if doc.get("status") not in ("complete", "awaiting_confirmation"):
         raise HTTPException(status_code=400, detail="Project must be complete before iterating.")
 
-    # TODO Phase 4: Kick off iteration agent
-    await coll.update_one(
+    await projects_collection().update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {"status": "analyzing", "updated_at": datetime.now(tz=timezone.utc)}},
     )
-    return {"message": "Iteration started.", "project_id": project_id}
+    return {"message": "Iteration queued (Phase 4).", "project_id": project_id}
 
 
-# ── Version Control ────────────────────────────────────────────
+# ── Version Control ───────────────────────────────────────────────
 
 @router.get("/{project_id}/versions", response_model=list[ProjectVersionPublic], response_model_by_alias=True)
 async def list_versions(project_id: str, current_user=Depends(get_current_user)):
-    """List all committed versions of a project."""
-    # Verify ownership
+    """List all saved versions of a project."""
     proj = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    coll = project_versions_collection()
-    cursor = coll.find({"project_id": project_id}, sort=[("version", -1)])
+    cursor   = project_versions_collection().find({"project_id": project_id}, sort=[("version", -1)])
     versions = []
     async for doc in cursor:
         versions.append(ProjectVersionPublic(**doc))
@@ -256,16 +252,11 @@ async def list_versions(project_id: str, current_user=Depends(get_current_user))
 @router.post("/{project_id}/rollback/{version}")
 async def rollback_to_version(
     project_id: str,
-    version: int,
+    version:    int,
     current_user=Depends(get_current_user),
 ):
-    """
-    Roll back a project to a previous version.
-    Phase 3: Restores from file_snapshot and optionally reverts GitHub.
-    """
-    # Verify ownership
-    proj_coll = projects_collection()
-    proj = await proj_coll.find_one(
+    """Restore a project to a previous version's file snapshot."""
+    proj = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not proj:
@@ -277,20 +268,14 @@ async def rollback_to_version(
     if not ver_doc:
         raise HTTPException(status_code=404, detail=f"Version {version} not found.")
 
-    # Restore file tree from snapshot
-    await proj_coll.update_one(
+    await projects_collection().update_one(
         {"_id": ObjectId(project_id)},
-        {
-            "$set": {
-                "file_tree": ver_doc["file_snapshot"],
-                "current_version": version,
-                "status": "complete",
-                "updated_at": datetime.now(tz=timezone.utc),
-            }
-        },
+        {"$set": {
+            "file_tree":       ver_doc["file_snapshot"],
+            "current_version": version,
+            "status":          "complete",
+            "updated_at":      datetime.now(tz=timezone.utc),
+        }},
     )
-
-    # TODO Phase 3: Also revert GitHub repo to commit_sha
-
     return {"message": f"Rolled back to version {version}."}
     
