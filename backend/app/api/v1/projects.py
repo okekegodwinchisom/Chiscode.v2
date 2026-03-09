@@ -121,6 +121,7 @@ async def delete_project(project_id: str, current_user=Depends(get_current_user)
 
 @router.post("/generate", response_model=GenerationStarted, status_code=status.HTTP_202_ACCEPTED)
 async def start_generation(
+    background_tasks: BackgroundTasks,
     req: GenerateProjectRequest,
     current_user=Depends(check_rate_limit),
 ):
