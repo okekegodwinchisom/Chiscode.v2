@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from fastapi import BackgroundTasks  # Add this import
-from app.agents.generation_agent import run_generation_agent  # Add this import
+from fastapi.responses import StreamingResponse
 
+from app.agents.generation_agent import generate_project_stream
 from app.api.deps import check_rate_limit, get_current_user
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -17,14 +17,12 @@ from app.db.mongodb import project_versions_collection, projects_collection
 from app.schemas.project import (
     ConfirmProjectRequest,
     GenerateProjectRequest,
-    GenerationStarted,
     IterateProjectRequest,
     ProjectDetail,
     ProjectInDB,
     ProjectPublic,
     ProjectVersionPublic,
 )
-
 logger = get_logger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"], redirect_slashes=False)
 
