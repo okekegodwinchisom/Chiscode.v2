@@ -25,13 +25,13 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserPublic)
+@router.get("/me", response_model=UserPublic,response_model_by_alias=True)
 async def get_profile(current_user=Depends(get_current_user)):
     """Return the currently authenticated user's profile."""
     return UserPublic.model_validate(current_user.model_dump(by_alias=True))
 
 
-@router.get("/me/usage", response_model=UsageResponse)
+@router.get("/me/usage", response_model=UsageResponse,response_model_by_alias=True)
 async def get_usage(current_user=Depends(get_current_user)):
     """Return today's request usage and plan limits."""
     today = date.today()
@@ -49,7 +49,7 @@ async def get_usage(current_user=Depends(get_current_user)):
     )
 
 
-@router.patch("/me", response_model=UserPublic)
+@router.patch("/me", response_model=UserPublic,response_model_by_alias=True)
 async def update_profile(
     update_data: UserUpdate,
     current_user=Depends(get_current_user)
