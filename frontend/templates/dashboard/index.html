@@ -233,7 +233,7 @@ async function loadUsage() {
 
 // ── Load projects ─────────────────────────────────────────────
 async function loadProjects() {
-  const res = await apiFetch('/api/v1/projects/');
+  const res = await apiFetch('/projects/');
   if (!res) return;
   const projects = await res.json();
   const el = document.getElementById('projects-list');
@@ -255,7 +255,7 @@ async function loadProjects() {
       </div>
       <span class="badge badge-${STATUS_COLOR[p.status] || 'ghost'}">${p.status.replace(/_/g,' ')}</span>
       <div class="project-row__actions">
-        <a href="/api/v1/projects/${p._id}" class="btn btn-ghost btn-sm">Open</a>
+        <a href="/projects/${p._id}" class="btn btn-ghost btn-sm">Open</a>
       </div>
     </div>
   `).join('');
@@ -276,7 +276,7 @@ async function startGeneration() {
   const body = { prompt };
   if (name) body.project_name = name;
 
-  const res = await apiFetch('/api/v1/projects/generate', {
+  const res = await apiFetch('/projects/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -313,7 +313,7 @@ async function startGeneration() {
   // (agent may finish before WS connects, or WS may be blocked by proxy)
   function pollUntilDone(projectId, intervalMs = 3000) {
     const timer = setInterval(async () => {
-      const r = await apiFetch('/api/v1/projects/' + projectId);
+      const r = await apiFetch('/projects/' + projectId);
       if (!r) { clearInterval(timer); return; }
       const p = await r.json();
       if (p.status === 'awaiting_confirmation' || p.status === 'complete') {
@@ -344,7 +344,7 @@ async function startGeneration() {
 
   try {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/projects/ws/${data.project_id}`;
+    const wsUrl = `${wsProtocol}//${window.location.host}/projects/ws/${data.project_id}`;
 
     const ws = new WebSocket(wsUrl);
 
