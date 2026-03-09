@@ -292,8 +292,49 @@ async function startGeneration() {
     return;
   }
 
-  const data = await res.json();
+  // Read SSE stream directly from the response body
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
 
+  const resetBtn = () => {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete last line
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const msg = JSON.parse(line.slice(6));
+        if (msg.event === 'log')    addLog(msg.message);
+        if (msg.event === 'status') addLog('→ ' + msg.status.toUpperCase() + ': ' + msg.message, msg.status);
+        if (msg.event === 'file')   addLog('✅ ' + msg.filename + ' (' + msg.size + ' chars)', 'complete');
+        if (msg.event === 'issues') msg.issues.forEach(i => addLog('⚠️ ' + i, 'warn'));
+        if (msg.event === 'complete') {
+          addLog('🚀 ' + msg.message, 'complete');
+          setTimeout(() => {
+            loadProjects();
+            loadUsage();
+            document.getElementById('generate-modal').style.display = 'none';
+            resetBtn();
+          }, 1500);
+        }
+        if (msg.event === 'error') {
+          addLog('❌ ' + msg.message, 'error');
+          resetBtn();
+        }
+      } catch {}
+    }
+  }
+}
   // Show log terminal
   const logEl  = document.getElementById('gen-log');
   const logBody = document.getElementById('gen-log-body');
