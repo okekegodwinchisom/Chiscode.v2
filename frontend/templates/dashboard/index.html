@@ -233,7 +233,7 @@ async function loadUsage() {
 
 // ── Load projects ─────────────────────────────────────────────
 async function loadProjects() {
-  const res = await apiFetch(`${API}/projects/`);
+  const res = await apiFetch('/projects/');
   if (!res) return;
   const projects = await res.json();
   const el = document.getElementById('projects-list');
@@ -255,7 +255,7 @@ async function loadProjects() {
       </div>
       <span class="badge badge-${STATUS_COLOR[p.status] || 'ghost'}">${p.status.replace(/_/g,' ')}</span>
       <div class="project-row__actions">
-        <a href="${API}/projects/${p._id}" class="btn btn-ghost btn-sm">Open</a>
+        <a href="/projects/${p._id}" class="btn btn-ghost btn-sm">Open</a>
       </div>
     </div>
   `).join('');
