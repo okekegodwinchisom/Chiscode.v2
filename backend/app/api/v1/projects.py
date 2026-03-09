@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import BackgroundTasks  # Add this import
+from app.agents.generation_agent import run_generation_agent  # Add this import
 
 from app.api.deps import check_rate_limit, get_current_user
 from app.core.config import settings
@@ -152,9 +154,23 @@ async def start_generation(
 
     # TODO Phase 2: Kick off LangGraph agent as a background task
     # background_tasks.add_task(run_generation_agent, project_id, req, current_user)
-
+    background_tasks.add_task(
+        run_generation_agent,
+        project_id=project_id,
+        user_id=str(current_user.id),
+        prompt=req.prompt,
+        project_name=project_name,  
+        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None
+    )
+    
     logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
 
+    # Update the log to show progress
+    await coll.update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {"generation_log": ["🤖 Agent starting...", "Initializing code generation..."]}}
+    )
+    
     ws_url = f"ws://{settings.frontend_base_url.split('://')[-1]}/projects/ws/{project_id}"
     return GenerationStarted(project_id=project_id, ws_url=ws_url)
 
