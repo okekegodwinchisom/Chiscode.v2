@@ -111,7 +111,7 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static Files & Templates ──────────────────────────────
-    frontend_path = "/app/frontend"
+    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
     static_path = os.path.join(frontend_path, "static")
     templates_path = os.path.join(frontend_path, "templates")
 
@@ -235,7 +235,7 @@ def create_app() -> FastAPI:
                 "api_keys.html",
                 {"request": request, "settings": settings }
             )
-        print("✅ Frontend routes registered (/, /dashboard, /login, /register)")
+        print("✅ Frontend routes registered (/, /dashboard, /login, /register, /profile, /billing, /api_keys)")
 
     # ── Favicon ───────────────────────────────────────────────
     @app.get("/favicon.ico", include_in_schema=False)
