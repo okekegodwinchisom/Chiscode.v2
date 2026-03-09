@@ -342,7 +342,7 @@ const projectId = data.project_id;
             loadUsage();
             document.getElementById('generate-modal').style.display = 'none';
             resetBtn();
-            if (projectId) window.location.href = `${API}/projects/${projectId}`;
+            if (projectId) window.location.href = '/api/v1/projects/' + projectId;
           }, 1500);
         }
         if (msg.event === 'error') {
