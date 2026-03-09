@@ -154,13 +154,21 @@ async def start_generation(
     project_id = str(result.inserted_id)
 
     # TODO Phase 2: Kick off LangGraph agent as a background task
-    background_tasks.add_task(run_generation_agent, project_id, req, current_user)
-    
-    logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
-    
-    ws_url = f"ws://{settings.frontend_base_url.split('://')[-1]}/projects/ws/{project_id}"
-    return GenerationStarted(project_id=project_id, ws_url=ws_url)
+    background_tasks.add_task(
+        run_generation_agent,
+        project_id=project_id,
+        user_id=str(current_user.id),
+        prompt=req.prompt,
+        project_name=project_name,
+        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
+    )
 
+    logger.info("Generation queued", project_id=project_id, user_id=str(current_user.id))
+
+    base = settings.frontend_base_url.split("://")[-1]
+    scheme = "wss" if settings.is_production else "ws"
+    ws_url = f"{scheme}://{base}/api/v1/projects/ws/{project_id}"
+    return GenerationStarted(project_id=project_id, ws_url=ws_url)
 
 @router.post("/{project_id}/confirm")
 async def confirm_project(
