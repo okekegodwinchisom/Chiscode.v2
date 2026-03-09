@@ -292,15 +292,30 @@ async function startGeneration() {
     return;
   }
 
-  // Read SSE stream directly from the response body
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  const projectId = res.headers.get('X-Project-Id');
+
+  // Show log terminal
+  const logEl   = document.getElementById('gen-log');
+  const logBody = document.getElementById('gen-log-body');
+  logEl.style.display = 'block';
+
+  function addLog(msg, cls = '') {
+    const line = document.createElement('div');
+    line.className = 'terminal__line' + (cls ? ' terminal__line--' + cls : '');
+    line.textContent = msg;
+    logBody.insertBefore(line, logBody.lastChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
 
   const resetBtn = () => {
     btn.disabled = false;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
   };
+
+  // Read SSE stream directly from the response body
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -325,6 +340,7 @@ async function startGeneration() {
             loadUsage();
             document.getElementById('generate-modal').style.display = 'none';
             resetBtn();
+            if (projectId) window.location.href = '/projects/' + projectId;
           }, 1500);
         }
         if (msg.event === 'error') {
@@ -334,117 +350,6 @@ async function startGeneration() {
       } catch {}
     }
   }
-}
-  // Show log terminal
-  const logEl  = document.getElementById('gen-log');
-  const logBody = document.getElementById('gen-log-body');
-  logEl.style.display = 'block';
-
-  function addLog(msg, cls = '') {
-    const line = document.createElement('div');
-    line.className = 'terminal__line' + (cls ? ' terminal__line--' + cls : '');
-    line.textContent = msg;
-    logBody.insertBefore(line, logBody.lastChild);
-    logBody.scrollTop = logBody.scrollHeight;
-  }
-
-  addLog('Agent starting…');
-
-  // Poll project status — fallback when WebSocket misses events
-  // (agent may finish before WS connects, or WS may be blocked by proxy)
-  function pollUntilDone(projectId, intervalMs = 3000) {
-    const timer = setInterval(async () => {
-      const r = await apiFetch('/projects/' + projectId);
-      if (!r) { clearInterval(timer); return; }
-      const p = await r.json();
-      if (p.status === 'awaiting_confirmation' || p.status === 'complete') {
-        clearInterval(timer);
-        addLog('🚀 Complete! (' + Object.keys(p.file_tree || {}).length + ' files generated)', 'complete');
-        setTimeout(() => {
-          loadProjects();
-          document.getElementById('generate-modal').style.display = 'none';
-          btn.disabled = false;
-          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
-        }, 1500);
-      } else if (p.status === 'failed') {
-        clearInterval(timer);
-        addLog('❌ Generation failed: ' + (p.error_message || 'unknown error'), 'error');
-        btn.disabled = false;
-      } else {
-        // Show latest log entry while polling
-        const log = p.generation_log || [];
-        if (log.length) addLog(log[log.length - 1]);
-      }
-    }, intervalMs);
-    return timer;
-  }
-
-  // Try WebSocket first for real-time updates, fall back to polling on any error
-  let pollTimer = null;
-  let wsConnected = false;
-
-  try {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/projects/ws/${data.project_id}`;
-
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      wsConnected = true;
-      addLog('Live connection established…');
-    };
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'log')       addLog(msg.message);
-      if (msg.type === 'status')    addLog('→ ' + msg.status.toUpperCase() + ': ' + msg.message, msg.status);
-      if (msg.type === 'file_done') addLog('✓ ' + msg.filename + ' (' + msg.size + ' chars)', 'complete');
-      if (msg.type === 'complete') {
-        clearInterval(pollTimer);
-        addLog('🚀 Complete! Refreshing…', 'complete');
-        ws.close();
-        setTimeout(() => {
-          loadProjects();
-          document.getElementById('generate-modal').style.display = 'none';
-          btn.disabled = false;
-          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Project';
-        }, 1500);
-      }
-      if (msg.type === 'error') {
-        clearInterval(pollTimer);
-        addLog('❌ ' + msg.message, 'error');
-        btn.disabled = false;
-      }
-    };
-
-    ws.onerror = () => {
-      if (!wsConnected) {
-        addLog('WebSocket unavailable — switching to polling…');
-        pollTimer = pollUntilDone(data.project_id);
-      }
-    };
-
-    ws.onclose = (e) => {
-      // If closed without receiving complete/error, start polling to catch result
-      if (wsConnected && btn.disabled) {
-        addLog('Connection closed — polling for result…');
-        pollTimer = pollUntilDone(data.project_id);
-      }
-    };
-
-    // Safety net: if WS hasn't opened in 4s, fall back to polling
-    setTimeout(() => {
-      if (!wsConnected) {
-        addLog('Connecting… switching to polling.');
-        pollTimer = pollUntilDone(data.project_id);
-      }
-    }, 4000);
-
-  } catch (err) {
-    addLog('WebSocket not supported — polling instead.');
-    pollTimer = pollUntilDone(data.project_id);
-  }
-}
 
 // ── Logout ────────────────────────────────────────────────────
 document.getElementById('logout-btn').addEventListener('htmx:afterRequest', () => {
