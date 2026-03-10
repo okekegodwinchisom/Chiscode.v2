@@ -405,4 +405,112 @@ function showEmpty() {
   document.getElementById('code-body').innerHTML = `
     <div class="codeview__empty">
       <div class="codeview__empty-icon">📂</div>
-      <p style="font-size
+      <p style="font-size:0.9rem;color:var(--ghost)">Select a file from the tree to view its contents</p>
+    </div>`;
+}
+
+// ── Copy file content ────────────────────────────────────────
+function copyCurrentFile() {
+  if (!activeTab) return;
+  navigator.clipboard.writeText(fileTree[activeTab] || '').then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.classList.add('copy-flash');
+    btn.querySelector('svg').style.stroke = 'var(--neon)';
+    setTimeout(() => {
+      btn.classList.remove('copy-flash');
+      btn.querySelector('svg').style.stroke = '';
+    }, 800);
+    if (window.showToast) showToast('Copied to clipboard', 'success');
+  });
+}
+
+// ── Download single file ─────────────────────────────────────
+function downloadFile() {
+  if (!activeTab) return;
+  const content  = fileTree[activeTab] || '';
+  const filename = activeTab.split('/').pop();
+  const blob     = new Blob([content], { type: 'text/plain' });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Download all files as text dump ─────────────────────────
+function downloadProject() {
+  const files = Object.keys(fileTree);
+  if (!files.length) return;
+
+  let output = `# ChisCode Project Export\n# Project ID: ${projectId}\n# Files: ${files.length}\n\n`;
+  files.sort().forEach(f => {
+    output += `${'='.repeat(60)}\n# FILE: ${f}\n${'='.repeat(60)}\n\n${fileTree[f]}\n\n`;
+  });
+
+  const blob = new Blob([output], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `chiscode-${projectId}.txt`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Iterate ──────────────────────────────────────────────────
+function openIterateModal() {
+  document.getElementById('iterate-modal').style.display = 'flex';
+}
+
+async function submitIterate() {
+  const prompt = document.getElementById('iterate-prompt').value.trim();
+  if (!prompt) return;
+
+  const btn    = document.getElementById('iterate-btn');
+  const logEl  = document.getElementById('iterate-log');
+  const logBody= document.getElementById('iterate-log-body');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  logEl.style.display = 'block';
+
+  function addLog(msg) {
+    const line = document.createElement('div');
+    line.className = 'terminal__line';
+    line.textContent = msg;
+    logBody.insertBefore(line, logBody.lastChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  const res = await apiFetch('/projects/' + projectId + '/iterate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res) return;
+  if (!res.ok) {
+    const err = await res.json();
+    addLog('❌ ' + (err.detail || 'Iterate failed'));
+    btn.disabled = false; btn.textContent = 'Run Iteration';
+    return;
+  }
+
+  addLog('Iteration queued (Phase 4 coming soon)…');
+  setTimeout(() => {
+    btn.disabled = false; btn.textContent = 'Run Iteration';
+  }, 2000);
+}
+
+// ── Keyboard shortcuts ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // Ctrl/Cmd+C when not in an input — copy current file
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT') {
+    copyCurrentFile();
+  }
+  // Escape — close modals
+  if (e.key === 'Escape') {
+    document.querySelectorAll('[style*="display:flex"]').forEach(el => {
+      if (el.id?.includes('modal')) el.style.display = 'none';
+    });
+  }
+});
+
+// ── Boot ─────────────────────────────────────────────────────
+loadProject();
+</script>
+{% endblock %}
