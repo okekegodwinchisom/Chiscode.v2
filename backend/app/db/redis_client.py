@@ -93,40 +93,14 @@ async def check_and_increment_rate_limit(
     user_id: str,
     daily_limit: int,
     date_str: str,
-) -> Tuple[bool, int, int]:
-    """
-    Atomically check and increment the daily request counter.
-    Pipeline sends incr + expire in one HTTP round-trip.
-
-    Returns: (allowed, current_count, limit)
-    """
-    if not is_connected():
-        # If Redis is down, allow request but log warning
-        logger.warning("Redis not connected - rate limiting disabled")
-        return (True, 0, daily_limit)
+) -> tuple[bool, int, int]:
+    r = get_redis()
+    key = RATE_LIMIT_KEY.format(user_id=user_id, date=date_str)
+    current = await r.incr(key)
+    await r.expire(key, 86400)
+    current = int(current)
+    return current <= daily_limit, current, daily_limit
     
-    try:
-        r = get_redis()
-        key = RATE_LIMIT_KEY.format(user_id=user_id, date=date_str)
-
-        # Use pipeline for atomic operations
-        pipe = r.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, 86400)  # 24 hours
-        results = await pipe.execute()
-
-        # Extract count from results
-        # Results is a list: [incr_result, expire_result]
-        current = int(results[0]) if results and len(results) > 0 else 0
-        allowed = current <= daily_limit
-        
-        return (allowed, current, daily_limit)
-        
-    except Exception as e:
-        logger.error(f"Rate limit check failed: {e}")
-        # On error, allow the request
-        return (True, 0, daily_limit)
-
 
 async def get_current_usage(user_id: str, date_str: str) -> int:
     """Return today's request count for a user."""
