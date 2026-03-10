@@ -158,10 +158,8 @@ def create_app() -> FastAPI:
     async def not_found(request: Request, exc):
         if request.url.path.startswith("/api/"):
             return JSONResponse(status_code=404, content={"detail": "Not found."})
-        if templates:
-            return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
         return JSONResponse(status_code=404, content={"detail": "Not found."})
-
+        
     @app.exception_handler(500)
     async def server_error(request: Request, exc):
         logger.error("Unhandled server error", exc_info=exc)
