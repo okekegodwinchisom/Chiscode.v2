@@ -101,6 +101,9 @@ def create_app() -> FastAPI:
         logger.info("Templates loaded", path=str(templates_path))
     else:
         logger.warning("Templates not found — HTML routes disabled", path=str(templates_path))
+    # After creating templates, make settings globally available
+    if templates:
+        templates.env.globals["settings"] = settings
     # ── API routes ────────────────────────────────────────────────
     app.include_router(api_router, prefix="/api/v1")
 
