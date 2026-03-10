@@ -192,7 +192,7 @@ async def node_generate_stream(
         f"- Python files: syntactically valid, typed where appropriate\n"
         f"- JS/TS files: ES2022+, proper imports/exports\n"
         f"- Include helpful inline comments\n"
-        f"- with requirements, .env, and Dockerfile if required/n"
+        f"- include requirements, .env,files and Dockerfile if required/n"
     )
 
     # ── Generate files ────────────────────────────────────────
