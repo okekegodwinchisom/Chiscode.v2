@@ -43,6 +43,39 @@
   <!-- Main JS -->
   <script src="/static/js/main.js"></script>
   {% block scripts %}{% endblock %}
-
+<script>
+// Add this right after your existing script tags
+(function() {
+    // Check if we're in an iframe
+    if (window.self !== window.top) {
+        console.log('🔍 Detected in iframe - redirecting to direct URL');
+        
+        // Get the direct Space URL
+        const directUrl = 'https://godwin021-chiscode-v2.hf.space' + window.location.pathname + window.location.search;
+        
+        // Show a message and redirect
+        const messageDiv = document.createElement('div');
+        messageDiv.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #00e5ff;
+            color: black;
+            padding: 1rem;
+            text-align: center;
+            z-index: 9999;
+            font-family: sans-serif;
+        `;
+        messageDiv.innerHTML = `
+            ⚡ For the best experience, 
+            <a href="${directUrl}" style="color: black; font-weight: bold; text-decoration: underline;">
+                click here to open the app in full screen
+            </a>
+        `;
+        document.body.appendChild(messageDiv);
+    }
+})();
+</script>        
 </body>
 </html>
