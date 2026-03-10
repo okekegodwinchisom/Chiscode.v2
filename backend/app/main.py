@@ -81,28 +81,25 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static files & templates ──────────────────────────────────
-    # Try candidate paths — /app/frontend works on HF Spaces,
-    # ../../frontend works locally with docker-compose volume mount.
-    _here = Path(__file__).resolve().parent  # /app/app in container
-    _candidates = [
-        _here.parent / "frontend",           # /app/frontend  ← HF Spaces
-        _here.parent.parent / "frontend",    # repo-root/frontend  ← local
-        Path("/app/frontend"),               # absolute fallback
-    ]
-    _frontend = next((p for p in _candidates if p.is_dir()), None)
+    frontend_path = Path("/app/frontend")
+    static_path = frontend_path / "static"
+    templates_path = frontend_path / "templates"
+
+    print(f"\n📁 Checking frontend at: {frontend_path}")
+    print(f"Exists: {frontend_path.exists()}")
+    print(f"Static exists: {static_path.exists()}")
+    print(f"Templates exists: {templates_path.exists()}")
+
+    if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    print(f"✅ Mounted static from {static_path}")
 
     templates = None
-    if _frontend:
-        logger.info("Frontend found", path=str(_frontend))
-        _static = _frontend / "static"
-        _tmpl   = _frontend / "templates"
-        if _static.is_dir():
-            app.mount("/static", StaticFiles(directory=str(_static)), name="static")
-        if _tmpl.is_dir():
-            templates = Jinja2Templates(directory=str(_tmpl))
+    if templates_path.exists():
+       templates = Jinja2Templates(directory=str(templates_path))
+       print(f"✅ Loaded templates from {templates_path}")
     else:
-        logger.warning("Frontend directory not found — HTML routes disabled")
-
+      print(f"❌ Templates not found at {templates_path}")
     # ── API routes ────────────────────────────────────────────────
     app.include_router(api_router, prefix="/api/v1")
 
