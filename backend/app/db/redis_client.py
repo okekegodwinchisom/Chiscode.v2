@@ -93,14 +93,65 @@ async def check_and_increment_rate_limit(
     user_id: str,
     daily_limit: int,
     date_str: str,
-) -> tuple[bool, int, int]:
-    r = get_redis()
-    key = RATE_LIMIT_KEY.format(user_id=user_id, date=date_str)
-    current = await r.incr(key)
-    await r.expire(key, 86400)
-    current = int(current)
-    return current <= daily_limit, current, daily_limit
+) -> Tuple[bool, int, int]:
+    """
+    Check and increment rate limit.
     
+    Returns:
+        Tuple[bool, int, int]: (allowed, current_count, daily_limit)
+    """
+    if not is_connected():
+        # If Redis is down, allow the request but log warning
+        logger.warning("Redis not connected - rate limiting disabled")
+        return True, 0, daily_limit
+    
+    try:
+        r = get_redis()
+        key = RATE_LIMIT_KEY.format(user_id=user_id, date=date_str)
+        
+        # Get current value
+        current_val = await r.get(key)
+        
+        # Convert to int based on type
+        if current_val is None:
+            current = 0
+        elif isinstance(current_val, (int, str)):
+            current = int(current_val)
+        elif isinstance(current_val, bytes):
+            current = int(current_val.decode())
+        else:
+            current = 0
+            logger.warning(f"Unexpected Redis value type: {type(current_val)}")
+        
+        # Check if limit exceeded
+        if current >= daily_limit:
+            return False, current, daily_limit
+        
+        # Increment using pipeline
+        pipeline = r.pipeline()
+        pipeline.incr(key)
+        pipeline.expire(key, 86400)  # 24 hours
+        results = await pipeline.execute()
+        
+        # Pipeline returns list of results in order
+        if results and len(results) > 0:
+            new_count = results[0]
+            # Handle different return types
+            if isinstance(new_count, (int, str)):
+                new_count = int(new_count)
+            elif isinstance(new_count, bytes):
+                new_count = int(new_count.decode())
+            else:
+                new_count = current + 1
+        else:
+            new_count = current + 1
+        
+        return True, new_count, daily_limit
+        
+    except Exception as e:
+        logger.error(f"Rate limit check failed: {e}")
+        # On error, allow the request
+        return True, 0, daily_limit
 
 async def get_current_usage(user_id: str, date_str: str) -> int:
     """Return today's request count for a user."""
