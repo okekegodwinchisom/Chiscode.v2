@@ -23,27 +23,7 @@
   <!-- Alpine.js -->
   <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
 
-  {% block head %}{% endblock %}
-</head>
-<body
-  class="bg-void text-ghost antialiased min-h-screen"
-  x-data="{ sidebarOpen: false }"
->
-
-
-  <!-- Ambient texture overlays -->
-  <div class="noise"     aria-hidden="true"></div>
-  <div class="scanlines" aria-hidden="true"></div>
-
-  {% block body %}{% endblock %}
-
-  <!-- Toast container -->
-  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
-
-  <!-- Main JS -->
-  <script src="/static/js/main.js"></script>
-  {% block scripts %}{% endblock %}
-<script>
+  <script>
 // Add this right after your existing script tags
 (function() {
     // Check if we're in an iframe
@@ -76,6 +56,28 @@
         document.body.appendChild(messageDiv);
     }
 })();
-</script>        
+  </script>
+  
+  {% block head %}{% endblock %}
+</head>
+<body
+  class="bg-void text-ghost antialiased min-h-screen"
+  x-data="{ sidebarOpen: false }"
+>
+
+
+  <!-- Ambient texture overlays -->
+  <div class="noise"     aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  {% block body %}{% endblock %}
+
+  <!-- Toast container -->
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Main JS -->
+  <script src="/static/js/main.js"></script>
+  {% block scripts %}{% endblock %}
+<script>        
 </body>
 </html>
