@@ -111,31 +111,28 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static Files & Templates ──────────────────────────────
-    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
-    static_path = os.path.join(frontend_path, "static")
-    templates_path = os.path.join(frontend_path, "templates")
+    import os
+    from pathlib import Path
 
-        
-    # Debug output
-    print("\n" + "="*50)
-    print("🔍 DEBUG: Frontend Paths")
-    print("="*50)
-    print(f"Frontend path: {frontend_path}")
-    print(f"Frontend exists: {os.path.exists(frontend_path)}")
-    print(f"Templates path: {templates_path}")
-    print(f"Templates exists: {os.path.exists(templates_path)}")
-    if os.path.exists(templates_path):
-        print(f"Index.html exists: {os.path.exists(os.path.join(templates_path, 'index.html'))}")
-    print("="*50 + "\n")
+    # Try candidate paths in order — works both locally and on HF Spaces
+    _here = Path(__file__).resolve().parent          # /app/app
+    _candidates = [
+        _here.parent / "frontend",                   # /app/frontend  (HF Spaces)
+        _here.parent.parent / "frontend",            # /frontend or repo-root/frontend (local)
+        Path("/app/frontend"),                        # absolute fallback
+    ]
+    frontend_path = next((p for p in _candidates if p.is_dir()), None)
 
-    if os.path.exists(static_path):
-        app.mount("/static", StaticFiles(directory=static_path), name="static")
-        print(f"✅ Mounted static files from {static_path}")
-
-    templates = Jinja2Templates(directory=templates_path) if os.path.exists(templates_path) else None
-    if templates:
-        print(f"✅ Loaded templates from {templates_path}")
-
+    if frontend_path:
+        static_path    = frontend_path / "static"
+        templates_path = frontend_path / "templates"
+        logger.info("Frontend found", path=str(frontend_path))
+        if static_path.is_dir():
+            app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+        templates = Jinja2Templates(directory=str(templates_path)) if templates_path.is_dir() else None
+    else:
+        logger.warning("Frontend directory not found — HTML routes disabled")
+        templates = None
     # ── API Routes ────────────────────────────────────────────
     # Include auth routes
     app.include_router(auth_router, prefix="/api/v1")
