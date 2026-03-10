@@ -148,22 +148,23 @@ async def start_generation(
 
     logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
 
-    return StreamingResponse(
-        generate_project_stream(
-            project_id=project_id,
-            user_id=str(current_user.id),
-            prompt=req.prompt,
-            project_name=project_name,
-            preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
-        ),
-        media_type="text/event-stream",
-        headers={
-            "X-Project-Id":      project_id,
-            "Cache-Control":     "no-cache",
-            "X-Accel-Buffering": "no",   # disables nginx buffering on HF Spaces
-        },
+    generator = generate_project_stream(
+        project_id=project_id,
+        user_id=str(current_user.id),
+        prompt=req.prompt,
+        project_name=project_name,
+        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
     )
 
+    response = StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+    )
+    response.headers["X-Project-Id"]      = project_id
+    response.headers["Cache-Control"]     = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Transfer-Encoding"] = "chunked"
+    return response
 
 # ── Confirm / Cancel ──────────────────────────────────────────────
 
