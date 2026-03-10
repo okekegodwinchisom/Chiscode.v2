@@ -81,25 +81,26 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static files & templates ──────────────────────────────────
-    frontend_path = Path("/app/frontend")
-    static_path = frontend_path / "static"
+    frontend_path  = Path("/app/frontend")
+    static_path    = frontend_path / "static"
     templates_path = frontend_path / "templates"
 
-    print(f"\n📁 Checking frontend at: {frontend_path}")
-    print(f"Exists: {frontend_path.exists()}")
-    print(f"Static exists: {static_path.exists()}")
-    print(f"Templates exists: {templates_path.exists()}")
+    logger.info("Frontend check",
+                path=str(frontend_path),
+                exists=frontend_path.exists(),
+                static=static_path.exists(),
+                templates=templates_path.exists())
 
     if static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-    print(f"✅ Mounted static from {static_path}")
+        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+        logger.info("Static files mounted", path=str(static_path))
 
     templates = None
     if templates_path.exists():
-       templates = Jinja2Templates(directory=str(templates_path))
-       print(f"✅ Loaded templates from {templates_path}")
+        templates = Jinja2Templates(directory=str(templates_path))
+        logger.info("Templates loaded", path=str(templates_path))
     else:
-      print(f"❌ Templates not found at {templates_path}")
+        logger.warning("Templates not found — HTML routes disabled", path=str(templates_path))
     # ── API routes ────────────────────────────────────────────────
     app.include_router(api_router, prefix="/api/v1")
 
