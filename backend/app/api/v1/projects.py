@@ -1,18 +1,33 @@
 """
-ChisCode — Project Routes
-Generation (SSE streaming), CRUD, version control.
+ChisCode — Project Routes (Phase 3)
+=====================================
+Generation (HITL SSE), GitHub confirm/push, iteration PR, version control.
+
+Two-phase generation flow:
+  1. POST /projects/generate         → analyze + stack suggestion (SSE)
+  2. POST /projects/{id}/select-stack → user picks stack (JSON)
+  3. POST /projects/{id}/generate/run → generate files (SSE)
+  4. POST /projects/{id}/confirm      → push to GitHub (SSE)
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-from app.agents.generation_agent import generate_project_stream
+from app.agents.generation_agent import (
+    node_analyze_stream,
+    node_generate_stream,
+    node_github_stream,
+    node_iterate_stream,
+)
 from app.api.deps import check_rate_limit, get_current_user
 from app.core.logging import get_logger
 from app.db.mongodb import project_versions_collection, projects_collection
+from app.core.security import decrypt_value
 from app.schemas.project import (
     ConfirmProjectRequest,
     GenerateProjectRequest,
@@ -26,22 +41,17 @@ from app.schemas.project import (
 logger = get_logger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"], redirect_slashes=False)
 
-# In-memory WebSocket manager — kept for future use, no-ops safely if unused
 _active_connections: dict[str, list[WebSocket]] = {}
 
 
-# ── WebSocket (kept for compatibility) ───────────────────────────
+# ── WebSocket (compat) ────────────────────────────────────────────
 
 async def ws_broadcast(project_id: str, message: dict) -> None:
-    connections = _active_connections.get(project_id, [])
-    dead = []
-    for ws in connections:
+    for ws in list(_active_connections.get(project_id, [])):
         try:
             await ws.send_text(json.dumps(message))
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        connections.remove(ws)
+            _active_connections[project_id].remove(ws)
 
 
 @router.websocket("/ws/{project_id}")
@@ -50,60 +60,52 @@ async def project_ws(websocket: WebSocket, project_id: str):
     _active_connections.setdefault(project_id, []).append(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            if data == "ping":
+            if await websocket.receive_text() == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
-        conns = _active_connections.get(project_id, [])
-        if websocket in conns:
-            conns.remove(websocket)
+        if websocket in _active_connections.get(project_id, []):
+            _active_connections[project_id].remove(websocket)
 
 
-# ── Project CRUD ──────────────────────────────────────────────────
+# ── CRUD ──────────────────────────────────────────────────────────
 
 @router.get("/", response_model=list[ProjectPublic], response_model_by_alias=True)
 async def list_projects(
     current_user=Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = 0, limit: int = 20,
 ):
-    """List all projects for the authenticated user, newest first."""
     cursor = projects_collection().find(
         {"user_id": str(current_user.id)},
-        sort=[("created_at", -1)],
-        skip=skip,
-        limit=limit,
+        sort=[("created_at", -1)], skip=skip, limit=limit,
     )
-    projects = []
+    out = []
     async for doc in cursor:
         p = ProjectInDB(**doc)
-        projects.append(ProjectPublic(**p.model_dump(by_alias=True), file_count=len(p.file_tree)))
-    return projects
+        out.append(ProjectPublic(**p.model_dump(by_alias=True), file_count=len(p.file_tree)))
+    return out
 
 
 @router.get("/{project_id}", response_model=ProjectDetail, response_model_by_alias=True)
 async def get_project(project_id: str, current_user=Depends(get_current_user)):
-    """Get full project details including file tree and generation log."""
     doc = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+        raise HTTPException(status_code=404, detail="Project not found.")
     p = ProjectInDB(**doc)
     return ProjectDetail(**p.model_dump(by_alias=True), file_count=len(p.file_tree))
 
 
-@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{project_id}", status_code=204)
 async def delete_project(project_id: str, current_user=Depends(get_current_user)):
-    """Permanently delete a project (owner only)."""
-    result = await projects_collection().delete_one(
+    r = await projects_collection().delete_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found.")
 
 
-# ── Generation (SSE) ──────────────────────────────────────────────
+# ── Phase 3 Generation Flow ───────────────────────────────────────
 
 @router.post("/generate")
 async def start_generation(
@@ -111,19 +113,9 @@ async def start_generation(
     current_user=Depends(check_rate_limit),
 ):
     """
-    Create a project record then stream generation progress as SSE.
-
-    The client reads the response body as a stream — no polling, no WebSocket.
-    Each chunk is a `data: {...}\\n\\n` SSE line with an `event` field:
-      log      — progress message
-      status   — status change  {status, message}
-      file     — file generated {filename, size}
-      issues   — quality notes  {issues: [...]}
-      complete — finished       {file_count}
-      error    — fatal          {message}
-
-    The X-Project-Id response header carries the new project's MongoDB _id
-    so the client can navigate to /projects/{id} on completion.
+    STEP 1 — Analyze prompt + suggest tech stacks (SSE).
+    Ends with 'stack_suggestion' event. Client shows picker.
+    Client then calls POST /{id}/select-stack, then /{id}/generate/run.
     """
     project_name = req.project_name or f"project-{ObjectId()}"
 
@@ -145,19 +137,10 @@ async def start_generation(
 
     result     = await projects_collection().insert_one(doc)
     project_id = str(result.inserted_id)
-
-    logger.info("Generation started", project_id=project_id, user_id=str(current_user.id))
-
-    generator = generate_project_stream(
-        project_id=project_id,
-        user_id=str(current_user.id),
-        prompt=req.prompt,
-        project_name=project_name,
-        preferred_stack=req.preferred_stack.model_dump() if req.preferred_stack else None,
-    )
+    logger.info("Generation started", project_id=project_id)
 
     response = StreamingResponse(
-        generator,
+        node_analyze_stream(project_id, req.prompt, project_name),
         media_type="text/event-stream",
     )
     response.headers["X-Project-Id"]      = project_id
@@ -166,7 +149,89 @@ async def start_generation(
     response.headers["Transfer-Encoding"] = "chunked"
     return response
 
-# ── Confirm / Cancel ──────────────────────────────────────────────
+
+class SelectStackRequest(BaseModel):
+    option_id:  str                    # "option_a" | "option_b" | "option_c"
+    custom_stack: dict | None = None   # {frontend, backend, database, extras}
+
+
+@router.post("/{project_id}/select-stack")
+async def select_stack(
+    project_id: str,
+    req: SelectStackRequest,
+    current_user=Depends(get_current_user),
+):
+    """
+    STEP 2 — HITL: user picks a stack from the suggestions.
+    Saves chosen stack to DB and advances status to 'stack_selected'.
+    Client then calls /{id}/generate/run.
+    """
+    doc = await projects_collection().find_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    if doc.get("status") != "awaiting_stack_selection":
+        raise HTTPException(status_code=400,
+            detail=f"Expected status 'awaiting_stack_selection', got '{doc.get('status')}'")
+
+    # Find the chosen option from stack_options
+    chosen = None
+    if req.custom_stack:
+        chosen = req.custom_stack
+    else:
+        for opt in doc.get("stack_options", []):
+            if opt.get("id") == req.option_id:
+                chosen = {
+                    "frontend": opt.get("frontend", ""),
+                    "backend":  opt.get("backend", ""),
+                    "database": opt.get("database", ""),
+                    "extras":   opt.get("extras", []),
+                }
+                break
+
+    if not chosen:
+        raise HTTPException(status_code=400, detail=f"Stack option '{req.option_id}' not found.")
+
+    await projects_collection().update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {
+            "stack":      chosen,
+            "status":     "stack_selected",
+            "updated_at": datetime.now(tz=timezone.utc),
+        }},
+    )
+    logger.info("Stack selected", project_id=project_id, stack=chosen)
+    return {"message": "Stack selected. Call /generate/run to start code generation.", "stack": chosen}
+
+
+@router.post("/{project_id}/generate/run")
+async def run_generation(
+    project_id: str,
+    current_user=Depends(get_current_user),
+):
+    """
+    STEP 3 — Generate files + quality check (SSE).
+    Requires status='stack_selected'. Ends with 'complete' event.
+    """
+    doc = await projects_collection().find_one(
+        {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    if doc.get("status") != "stack_selected":
+        raise HTTPException(status_code=400,
+            detail=f"Select a stack first. Current status: '{doc.get('status')}'")
+
+    response = StreamingResponse(
+        node_generate_stream(project_id),
+        media_type="text/event-stream",
+    )
+    response.headers["Cache-Control"]     = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Transfer-Encoding"] = "chunked"
+    return response
+
 
 @router.post("/{project_id}/confirm")
 async def confirm_project(
@@ -175,8 +240,8 @@ async def confirm_project(
     current_user=Depends(get_current_user),
 ):
     """
-    User approves the generated project.
-    Phase 3 will trigger the GitHub commit here.
+    STEP 4 — Push to GitHub (SSE).
+    Creates repo, pushes files, saves repo URL. Requires GitHub OAuth.
     """
     doc = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
@@ -184,38 +249,64 @@ async def confirm_project(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
     if doc.get("status") != "awaiting_confirmation":
-        raise HTTPException(status_code=400, detail="Project is not awaiting confirmation.")
+        raise HTTPException(status_code=400, detail="Project must be awaiting confirmation.")
 
-    await projects_collection().update_one(
-        {"_id": ObjectId(project_id)},
-        {"$set": {"status": "committing", "updated_at": datetime.now(tz=timezone.utc)}},
+    # Require GitHub token if push requested
+    if req.push_to_github:
+        encrypted = current_user.github_token_encrypted
+        if not encrypted:
+            raise HTTPException(
+                status_code=400,
+                detail="GitHub account not connected. Log in via GitHub OAuth first.",
+            )
+        github_token = decrypt_value(encrypted)
+    else:
+        github_token = None
+
+    if not req.push_to_github or not github_token:
+        # Just mark complete without GitHub push
+        await projects_collection().update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {"status": "complete", "updated_at": datetime.now(tz=timezone.utc)}},
+        )
+        return {"message": "Project confirmed (no GitHub push)."}
+
+    response = StreamingResponse(
+        node_github_stream(
+            project_id=project_id,
+            github_token=github_token,
+            commit_message=req.commit_message or f"Initial commit — generated by ChisCode",
+            private_repo=False,
+        ),
+        media_type="text/event-stream",
     )
-    return {"message": "Confirmed. GitHub integration coming in Phase 3."}
+    response.headers["Cache-Control"]     = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Transfer-Encoding"] = "chunked"
+    return response
 
 
 @router.post("/{project_id}/cancel")
 async def cancel_project(project_id: str, current_user=Depends(get_current_user)):
-    """Cancel a pending or in-progress project."""
-    result = await projects_collection().update_one(
+    r = await projects_collection().update_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)},
         {"$set": {"status": "cancelled", "updated_at": datetime.now(tz=timezone.utc)}},
     )
-    if result.matched_count == 0:
+    if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Project not found.")
     return {"message": "Project cancelled."}
 
 
 # ── Iteration ─────────────────────────────────────────────────────
 
-@router.post("/{project_id}/iterate", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{project_id}/iterate")
 async def iterate_project(
     project_id: str,
     req: IterateProjectRequest,
     current_user=Depends(check_rate_limit),
 ):
     """
-    Refine an existing project with a follow-up prompt.
-    Phase 4: will stream the iteration agent as SSE.
+    Refine an existing project. Pushes changed files to a PR branch (SSE).
     """
     doc = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
@@ -225,38 +316,46 @@ async def iterate_project(
     if doc.get("status") not in ("complete", "awaiting_confirmation"):
         raise HTTPException(status_code=400, detail="Project must be complete before iterating.")
 
-    await projects_collection().update_one(
-        {"_id": ObjectId(project_id)},
-        {"$set": {"status": "analyzing", "updated_at": datetime.now(tz=timezone.utc)}},
+    encrypted = current_user.github_token_encrypted
+    if not encrypted:
+        raise HTTPException(status_code=400, detail="GitHub account not connected.")
+    github_token = decrypt_value(encrypted)
+
+    next_version = doc.get("current_version", 1) + 1
+
+    response = StreamingResponse(
+        node_iterate_stream(
+            project_id=project_id,
+            github_token=github_token,
+            iterate_prompt=req.prompt,
+            version=next_version,
+        ),
+        media_type="text/event-stream",
     )
-    return {"message": "Iteration queued (Phase 4).", "project_id": project_id}
+    response.headers["Cache-Control"]     = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Transfer-Encoding"] = "chunked"
+    return response
 
 
 # ── Version Control ───────────────────────────────────────────────
 
 @router.get("/{project_id}/versions", response_model=list[ProjectVersionPublic], response_model_by_alias=True)
 async def list_versions(project_id: str, current_user=Depends(get_current_user)):
-    """List all saved versions of a project."""
     proj = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found.")
-
-    cursor   = project_versions_collection().find({"project_id": project_id}, sort=[("version", -1)])
-    versions = []
-    async for doc in cursor:
-        versions.append(ProjectVersionPublic(**doc))
-    return versions
+    cursor = project_versions_collection().find({"project_id": project_id}, sort=[("version", -1)])
+    return [ProjectVersionPublic(**doc) async for doc in cursor]
 
 
 @router.post("/{project_id}/rollback/{version}")
 async def rollback_to_version(
-    project_id: str,
-    version:    int,
-    current_user=Depends(get_current_user),
+    project_id: str, version: int, current_user=Depends(get_current_user),
 ):
-    """Restore a project to a previous version's file snapshot."""
+    """Restore project to a saved version snapshot and push a revert commit."""
     proj = await projects_collection().find_one(
         {"_id": ObjectId(project_id), "user_id": str(current_user.id)}
     )
@@ -278,5 +377,23 @@ async def rollback_to_version(
             "updated_at":      datetime.now(tz=timezone.utc),
         }},
     )
+
+    # If project has GitHub, push revert commit
+    encrypted = current_user.github_token_encrypted
+    repo_name = proj.get("github_repo_name")
+    owner     = proj.get("github_owner")
+
+    if encrypted and repo_name and owner:
+        from app.services.github_service import GitHubService
+        gh = GitHubService(decrypt_value(encrypted))
+        try:
+            await gh.push_files(
+                owner=owner,
+                repo=repo_name,
+                file_tree=ver_doc["file_snapshot"],
+                commit_message=f"revert: rollback to version {version}",
+            )
+        except Exception as exc:
+            logger.warning("GitHub rollback push failed", error=str(exc))
+
     return {"message": f"Rolled back to version {version}."}
-    
