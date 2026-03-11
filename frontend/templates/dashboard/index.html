@@ -411,6 +411,18 @@ async function readSSE(response, handlers) {
     }
   }
 }
+status: msg => {
+  if (msg.status === 'generating' && msg.message.includes('files')) {
+    addLog('→ ' + msg.message);
+    // Show estimated time
+    const fileCount = parseInt(msg.message) || 0;
+    if (fileCount > 0) {
+      addLog(`⏱ Estimated time: ${Math.ceil(fileCount * 0.5)}-${fileCount} minutes`, 'warn');
+    }
+  } else {
+    addLog('→ ' + msg.message);
+  }
+},
 
 // ── Log terminal ──────────────────────────────────────────────
 function addLog(msg, cls = '') {
