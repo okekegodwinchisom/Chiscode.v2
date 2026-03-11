@@ -76,7 +76,7 @@ dependencies = [
     "rich==13.9.4",
 ]
 
-# ── Dependency groups ─────────────────────────────────────────
+# ── [project.optional-dependencies] ─────────────────────────────────────────
 # PEP 735 — replaces the deprecated [tool.uv.dev-dependencies]
 # Docker: uv sync --no-group dev   (runtime only)
 # Local:  uv sync --group dev      (runtime + dev tools)
