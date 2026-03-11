@@ -744,7 +744,7 @@ async function loadUsage() {
 
 // ── Load projects ─────────────────────────────────────────────
 async function loadProjects() {
-  const res = await apiFetch('/projects');
+  const res = await apiFetch('/projects/');
   if (!res) return;
   const projects = await res.json();
   const el = document.getElementById('projects-list');
@@ -809,4 +809,33 @@ loadProjects();
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:1rem" disabled>Current Plan</button>
       </div>
       <div style="border:2px solid var(--electric);border-radius:12px;padding:1.25rem;background:rgba(0,229,255,0.04)">
-        <div style="font-family:var(--font-display);font-size:1.1rem;font-weight:800;col
+        <div style="font-family:var(--font-display);font-size:1.1rem;font-weight:800;color:var(--electric)">Basic</div>
+        <div style="font-size:1.75rem;font-weight:800;color:var(--white);margin:0.35rem 0">$9<span style="font-size:0.8rem;color:var(--ghost);font-weight:400">/mo</span></div>
+        <div style="height:1px;background:var(--border);margin:0.75rem 0"></div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ 100 generations/day</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ GitHub push + PRs</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ Project history</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ Email support</div>
+        <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:rgba(0,229,255,0.1);border-color:var(--electric);color:var(--electric)" onclick="startUpgrade('basic')">Upgrade to Basic</button>
+      </div>
+      <div style="border:2px solid var(--neon);border-radius:12px;padding:1.25rem;background:rgba(57,255,20,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.1rem">
+          <div style="font-family:var(--font-display);font-size:1.1rem;font-weight:800;color:var(--neon)">Pro</div>
+          <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;padding:0.2rem 0.5rem;background:var(--neon);color:var(--void);border-radius:4px">Popular</span>
+        </div>
+        <div style="font-size:1.75rem;font-weight:800;color:var(--white);margin:0.35rem 0">$29<span style="font-size:0.8rem;color:var(--ghost);font-weight:400">/mo</span></div>
+        <div style="height:1px;background:rgba(57,255,20,0.2);margin:0.75rem 0"></div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ 1000 generations/day</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ All frameworks + MCP</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ Version history</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ Priority generation</div>
+        <div style="font-size:0.78rem;color:var(--ghost);padding:0.2rem 0">✓ Slack support</div>
+        <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:var(--neon);color:var(--void);border-color:var(--neon);font-weight:800" onclick="startUpgrade('pro')">Upgrade to Pro</button>
+      </div>
+    </div>
+    <div style="padding:0 1.5rem 1.25rem;font-size:0.75rem;color:var(--muted);text-align:center">
+      All plans include a 7-day free trial. Cancel anytime.
+    </div>
+  </div>
+</div>
+{% endblock %}
