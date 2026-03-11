@@ -198,10 +198,8 @@ async def node_generate_stream(
     # ── Generate files ────────────────────────────────────────
     file_tree: dict[str, str] = {}
 
-    for filename in file_plan:
-        await _log(project_id, f"📝 {filename}...")
-        yield _sse("log", message=f"📝 Generating {filename}...")
-
+    tasks = [asyncio.create_task(_generate_one(f)) for f in file_plan]
+# all firing simultaneously — drain results via Queue as they arrive
         context = ""
         for prev in list(file_tree.keys())[-2:]:
             context += f"\n\n# {prev} (excerpt):\n{file_tree[prev][:400]}"
