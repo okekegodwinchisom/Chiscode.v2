@@ -192,42 +192,61 @@ async def node_generate_stream(
         f"- Python files: syntactically valid, typed where appropriate\n"
         f"- JS/TS files: ES2022+, proper imports/exports\n"
         f"- Include helpful inline comments\n"
-        f"- include requirements, .env,files and Dockerfile if required/n"
     )
 
-    # ── Generate files ────────────────────────────────────────
+    # ── Generate files (parallel) ─────────────────────────────
+    # All files generated concurrently via asyncio.gather.
+    # Total time = slowest single file, not sum of all files.
+    # Results are collected into a shared dict via asyncio.Queue
+    # so SSE events can be yielded as each file completes.
+    import asyncio
+
     file_tree: dict[str, str] = {}
+    queue: asyncio.Queue = asyncio.Queue()
 
-    tasks = [asyncio.create_task(_generate_one(f)) for f in file_plan]
-# all firing simultaneously — drain results via Queue as they arrive
-        context = ""
-        for prev in list(file_tree.keys())[-2:]:
-            context += f"\n\n# {prev} (excerpt):\n{file_tree[prev][:400]}"
-
+    async def _generate_one(filename: str) -> None:
+        """Generate a single file and put result onto the queue."""
         try:
             response = await _llm(temperature=0.2).ainvoke([
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=(
-                    f"Generate file: {filename}"
-                    + (f"\n\nContext from files already generated:{context}" if context else "")
-                )),
+                HumanMessage(content=f"Generate file: {filename}"),
             ])
             content = _strip_fences(response.content)
-
             if not content or len(content.strip()) < 10:
                 content = f"# {filename}\n# Generation returned empty\n"
-                await _log(project_id, f"⚠️ {filename} empty")
-                yield _sse("log", message=f"⚠️ {filename} came back empty")
+                await queue.put(("empty", filename, content))
             else:
-                file_tree[filename] = content
-                await _set(project_id, {"file_tree": file_tree})
-                await _log(project_id, f"✅ {filename} ({len(content):,} chars)")
-                yield _sse("file", filename=filename, size=len(content))
-
+                await queue.put(("ok", filename, content))
         except Exception as exc:
-            logger.error("File generation error", filename=filename, error=str(exc))
-            await _log(project_id, f"❌ {filename}: {exc}")
-            yield _sse("log", message=f"❌ {filename} failed")
+            await queue.put(("error", filename, str(exc)))
+
+    # Fire all generation tasks simultaneously
+    yield _sse("log", message=f"⚡ Generating {len(file_plan)} files in parallel...")
+    tasks = [asyncio.create_task(_generate_one(f)) for f in file_plan]
+
+    # Drain the queue as results arrive — yields SSE in completion order
+    completed = 0
+    while completed < len(file_plan):
+        status_flag, filename, payload = await queue.get()
+        completed += 1
+
+        if status_flag == "ok":
+            file_tree[filename] = payload
+            await _set(project_id, {"file_tree": file_tree})
+            await _log(project_id, f"✅ {filename} ({len(payload):,} chars)")
+            yield _sse("file", filename=filename, size=len(payload),
+                       progress=f"{completed}/{len(file_plan)}")
+        elif status_flag == "empty":
+            file_tree[filename] = payload
+            await _log(project_id, f"⚠️ {filename} empty")
+            yield _sse("log", message=f"⚠️ {filename} came back empty ({completed}/{len(file_plan)})")
+        else:
+            logger.error("File generation error", filename=filename, error=payload)
+            await _log(project_id, f"❌ {filename}: {payload}")
+            yield _sse("log", message=f"❌ {filename} failed ({completed}/{len(file_plan)})")
+
+    # Ensure all tasks are fully done before proceeding
+    await asyncio.gather(*tasks, return_exceptions=True)
 
     # ── Quality check ─────────────────────────────────────────
     await _set(project_id, {"status": "quality_check"})
@@ -456,7 +475,6 @@ async def node_iterate_stream(
 
     except GitHubError as exc:
         yield _sse("error", message=f"GitHub error: {exc}")
-
 
 
 # ═══════════════════════════════════════════════════════════════
