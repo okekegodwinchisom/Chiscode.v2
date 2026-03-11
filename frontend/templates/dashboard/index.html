@@ -756,7 +756,7 @@ async function loadUsage() {
 
 // ── Load projects ─────────────────────────────────────────────
 async function loadProjects() {
-  const res = await apiFetch('/projects');
+  const res = await apiFetch('/projects/');
   if (!res) return;
   const projects = await res.json();
   const el = document.getElementById('projects-list');
