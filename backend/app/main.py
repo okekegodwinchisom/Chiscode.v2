@@ -43,6 +43,13 @@ async def lifespan(app: FastAPI):
     await redis_client.disconnect()
     logger.info("Shutdown complete.")
 
+# startup
+from app.db import pinecone_client
+await pinecone_client.connect()   # graceful — logs warning if key missing
+
+# shutdown
+await pinecone_client.disconnect()
+
 
 # ── App Factory ───────────────────────────────────────────────────
 
