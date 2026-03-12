@@ -154,7 +154,8 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "ok" if all_ok else "degraded", "checks": checks},
         )
-
+from app.db.pinecone_client import is_available
+checks["pinecone"] = "ok" if is_available() else "disabled"
     # ── Frontend HTML routes ──────────────────────────────────────
     if templates:
         @app.get("/", response_class=HTMLResponse, include_in_schema=False)
