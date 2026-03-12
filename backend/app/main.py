@@ -50,6 +50,23 @@ await pinecone_client.connect()   # graceful — logs warning if key missing
 # shutdown
 await pinecone_client.disconnect()
 
+db = mongodb.get_db()
+
+# Phase 5: text search on templates
+await db["templates"].create_index(
+    [("name","text"),("description","text"),("tags","text")],
+    name="templates_text_search", background=True,
+)
+await db["templates"].create_index("app_type",  background=True)
+await db["templates"].create_index("is_active", background=True)
+await db["templates"].create_index("use_count", background=True)
+
+# Phase 6: TTL on previews (auto-expire at expires_at)
+await db["previews"].create_index(
+    "expires_at", expireAfterSeconds=0,
+    name="previews_ttl", background=True,
+)
+
 
 # ── App Factory ───────────────────────────────────────────────────
 
