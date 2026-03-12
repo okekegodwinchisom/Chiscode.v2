@@ -177,6 +177,7 @@ def create_app() -> FastAPI:
         async def project_detail_page(request: Request, project_id: str):
             return templates.TemplateResponse("projects/detail.html", {"request": request})
 
+        
     # ── Exception handlers ────────────────────────────────────────
     @app.exception_handler(404)
     async def not_found(request: Request, exc):
