@@ -177,6 +177,14 @@ def create_app() -> FastAPI:
         async def project_detail_page(request: Request, project_id: str):
             return templates.TemplateResponse("projects/detail.html", {"request": request})
 
+        @app.get("/templates", response_class=HTMLResponse, include_in_schema=False)
+        async def templates_page(request): Request, project_id: str):
+            return templates.TemplateResponse("templates/index.html", {"request": request})
+
+        @app.get("/projects/{project_id}/", response_class=HTMLResponse, include_in_schema=False)
+        async def Project_deploy_page(request): Request, project_id: str):
+            return templates.TemplateResponse("projects/deploy.html", {"request": request})
+        
         
     # ── Exception handlers ────────────────────────────────────────
     @app.exception_handler(404)
