@@ -24,11 +24,6 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     secret_key: str = Field(..., min_length=32)
     debug: bool = False
-    # Comma-separated list of allowed Host headers.
-    # HF Spaces: set ALLOWED_HOSTS secret to:
-    #   Godwin021-chiscode-v2.hf.space,localhost,127.0.0.1
-    # Stored as str so pydantic-settings doesn't try to JSON-parse it.
-    # The validator below splits it into a list.
     allowed_hosts: str = "localhost,127.0.0.1"
     port: int = 7860
 
@@ -71,7 +66,9 @@ class Settings(BaseSettings):
     # ── Payments ─────────────────────────────────────────────
     revenuecat_api_key: str = Field(default="")
     revenuecat_webhook_secret: str = Field(default="")
-
+    rc_checkout_basic:  str = Field(default="")
+    rc_checkout_pro:    str = Field(default="")
+    rc_checkout_yearly: str = Field(default="")
     # ── Search ───────────────────────────────────────────────
     duckduckgo_max_results: int = 10
 
