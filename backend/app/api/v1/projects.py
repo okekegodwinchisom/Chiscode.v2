@@ -111,6 +111,7 @@ async def delete_project(project_id: str, current_user=Depends(get_current_user)
 async def start_generation(
     req: GenerateProjectRequest,
     current_user=Depends(check_rate_limit),
+    current_user: UserInDB = Depends(require_generation_quota),
 ):
     """
     STEP 1 — Analyze prompt + suggest tech stacks (SSE).
