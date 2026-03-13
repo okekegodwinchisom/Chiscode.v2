@@ -7,6 +7,9 @@ from app.api.v1 import auth
 from app.api.v1 import users
 from app.api.v1 import projects
 from app.api.v1 import webhooks
+from app.api.v1 import billing 
+from app.api.v1 import deploy
+from app.api.v1 import templates
 
 # Export all routers
 __all__ = [
@@ -14,4 +17,7 @@ __all__ = [
     "users", 
     "projects",
     "webhooks",
+    "billing",
+    "deploy",
+    "templates",
 ]
