@@ -1,19 +1,20 @@
 """
-ChisCode — Billing Service (Phase 7)
+ChisCode — Billing Service (Polar.sh)
 ======================================
-All payment-related business logic:
-  - RevenueCat REST API calls (fetch customer, manage subscriptions)
-  - Plan enforcement helpers
-  - Entitlement checks
-  - Billing issue tracking
+All payment logic using Polar.sh as the payments provider.
+https://docs.polar.sh/api
 
-The webhook handler (webhooks.py) writes plan changes to MongoDB.
-This service handles everything else billing-related.
+Polar replaces RevenueCat. Key differences:
+  - Webhooks use Polar's signature format (HMAC-SHA256, header: webhook-signature)
+  - Checkout sessions created server-side via Polar API
+  - Subscription state queried via Polar REST API
+  - Events: order.created, subscription.created, subscription.updated,
+            subscription.active, subscription.canceled, subscription.revoked
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 import httpx
 from bson import ObjectId
@@ -26,15 +27,15 @@ from app.db import redis_client
 
 logger = get_logger(__name__)
 
-# ── RevenueCat REST API base ───────────────────────────────────
-_RC_BASE = "https://api.revenuecat.com/v1"
+_POLAR_BASE = "https://api.polar.sh/v1"
 
-# ── Plan → RevenueCat product ID map (must match RC dashboard) ─
-PLAN_PRODUCT_MAP: dict[str, str] = {
-    "basic":  "chiscode_basic_monthly",
-    "pro":    "chiscode_pro_monthly",
-    "yearly": "chiscode_yearly",
-}
+# ── Product ID → plan name ─────────────────────────────────────
+def _product_plan_map() -> dict[str, str]:
+    return {
+        settings.polar_product_basic:  "basic",
+        settings.polar_product_pro:    "pro",
+        settings.polar_product_yearly: "yearly",
+    }
 
 # ── Plan display metadata ──────────────────────────────────────
 PLAN_META = {
@@ -48,11 +49,7 @@ PLAN_META = {
             "GitHub push",
             "Community support",
         ],
-        "missing": [
-            "API key access",
-            "One-click deployment",
-            "Priority generation",
-        ],
+        "missing": ["API key access", "One-click deployment", "Priority generation"],
     },
     "basic": {
         "name":        "Basic",
@@ -65,10 +62,7 @@ PLAN_META = {
             "GitHub push",
             "Email support",
         ],
-        "missing": [
-            "API key access",
-            "Priority generation",
-        ],
+        "missing": ["API key access", "Priority generation"],
     },
     "pro": {
         "name":        "Pro",
@@ -105,113 +99,119 @@ PLAN_META = {
 # ── Schemas ────────────────────────────────────────────────────
 
 class CustomerInfo(BaseModel):
-    user_id:            str
-    plan:               str
-    revenuecat_id:      Optional[str]
-    is_active:          bool
-    billing_flagged:    bool
-    entitlements:       list[str]
-    management_url:     Optional[str]   # RevenueCat subscriber portal URL
+    user_id:         str
+    plan:            str
+    polar_id:        Optional[str]
+    is_active:       bool
+    billing_flagged: bool
+    entitlements:    list[str]
+    portal_url:      Optional[str]
 
 
 class UsageSummary(BaseModel):
-    plan:            str
-    plan_name:       str
-    plan_price:      str
-    daily_limit:     int
-    used_today:      int
-    remaining:       int
-    resets_at:       str
-    features:        list[str]
-    missing:         list[str]
-    upgrade_url:     Optional[str]
+    plan:        str
+    plan_name:   str
+    plan_price:  str
+    daily_limit: int
+    used_today:  int
+    remaining:   int
+    resets_at:   str
+    features:    list[str]
+    missing:     list[str]
+    upgrade_url: Optional[str]
 
 
-# ── RevenueCat API helpers ─────────────────────────────────────
+# ── Polar API helpers ──────────────────────────────────────────
 
-def _rc_headers() -> dict:
+def _polar_headers() -> dict:
     return {
-        "Authorization": f"Bearer {settings.revenuecat_api_key}",
+        "Authorization": f"Bearer {settings.polar_access_token}",
         "Content-Type":  "application/json",
-        "X-Platform":    "web",
     }
 
 
-async def fetch_rc_customer(rc_id: str) -> dict:
-    """Fetch subscriber details from RevenueCat REST API."""
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(
-            f"{_RC_BASE}/subscribers/{rc_id}",
-            headers=_rc_headers(),
-        )
-        r.raise_for_status()
-        return r.json().get("subscriber", {})
-
-
-async def get_rc_management_url(rc_id: str) -> str | None:
-    """Get the self-service subscription management URL for a customer."""
-    if not settings.revenuecat_api_key or not rc_id:
-        return None
-    try:
-        subscriber = await fetch_rc_customer(rc_id)
-        return subscriber.get("management_url")
-    except Exception as exc:
-        logger.warning("Could not fetch RC management URL", error=str(exc))
-        return None
-
-
-async def register_rc_customer(user_id: str, email: str) -> str | None:
+async def create_checkout_session(
+    product_id: str,
+    user_id:    str,
+    email:      str,
+    success_url: str,
+) -> str | None:
     """
-    Create or retrieve a RevenueCat customer for a new user.
-    We use the MongoDB user_id as the RC app_user_id for easy correlation.
-    Returns the RC customer ID (same as user_id in this setup).
+    Create a Polar checkout session and return the checkout URL.
+    Polar docs: POST /v1/checkouts/custom
     """
-    if not settings.revenuecat_api_key:
+    if not settings.polar_access_token or not product_id:
         return None
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
-                f"{_RC_BASE}/subscribers/{user_id}",
-                headers=_rc_headers(),
-                json={"email": email},
+                f"{_POLAR_BASE}/checkouts/custom",
+                headers=_polar_headers(),
+                json={
+                    "product_id":         product_id,
+                    "customer_email":     email,
+                    "customer_metadata":  {"chiscode_user_id": user_id},
+                    "success_url":        success_url,
+                    "allow_discount_codes": True,
+                },
             )
-            # 200 = existing, 201 = created — both fine
-            if r.status_code in (200, 201):
-                await users_collection().update_one(
-                    {"_id": ObjectId(user_id)},
-                    {"$set": {"revenuecat_customer_id": user_id,
-                              "updated_at": datetime.now(tz=timezone.utc)}},
-                )
-                logger.info("RC customer registered", user_id=user_id)
-                return user_id
+            r.raise_for_status()
+            return r.json().get("url")
     except Exception as exc:
-        logger.warning("RC customer registration failed", error=str(exc))
-    return None
+        logger.error("Polar checkout creation failed", error=str(exc))
+        return None
+
+
+async def get_polar_subscription(polar_subscription_id: str) -> dict | None:
+    """Fetch a subscription from Polar API."""
+    if not settings.polar_access_token:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{_POLAR_BASE}/subscriptions/{polar_subscription_id}",
+                headers=_polar_headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+    except Exception as exc:
+        logger.warning("Polar subscription fetch failed", error=str(exc))
+        return None
+
+
+async def get_customer_portal_url(polar_customer_id: str) -> str | None:
+    """Get Polar customer portal URL for managing subscriptions."""
+    if not settings.polar_access_token or not polar_customer_id:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                f"{_POLAR_BASE}/customer-sessions",
+                headers=_polar_headers(),
+                json={"customer_id": polar_customer_id},
+            )
+            r.raise_for_status()
+            return r.json().get("customer_portal_url")
+    except Exception as exc:
+        logger.warning("Polar portal URL failed", error=str(exc))
+        return None
 
 
 # ── Plan enforcement ───────────────────────────────────────────
 
 async def check_generation_allowed(user_id: str, plan: str) -> tuple[bool, str]:
-    """
-    Check if the user is allowed to run a generation.
-    Returns (allowed: bool, reason: str).
-    Reads today's usage from Redis (same key as rate limiter).
-    """
     from datetime import date
-    today    = date.today().isoformat()
-    used     = await redis_client.get_current_usage(user_id, today)
-    limit    = settings.get_rate_limit(plan)
+    today = date.today().isoformat()
+    used  = await redis_client.get_current_usage(user_id, today)
+    limit = settings.get_rate_limit(plan)
 
     if used >= limit:
-        meta    = PLAN_META.get(plan, {})
         next_pl = _next_plan(plan)
         return False, (
-            f"Daily limit reached ({used}/{limit}). "
-            f"Resets at midnight UTC. "
-            + (f"Upgrade to {next_pl} for more generations." if next_pl else "")
+            f"Daily limit reached ({used}/{limit}). Resets at midnight UTC."
+            + (f" Upgrade to {next_pl.capitalize()} for more." if next_pl else "")
         )
 
-    # Check billing flag
     doc = await users_collection().find_one(
         {"_id": ObjectId(user_id)}, {"billing_flagged": 1}
     )
@@ -222,16 +222,12 @@ async def check_generation_allowed(user_id: str, plan: str) -> tuple[bool, str]:
 
 
 def check_feature_allowed(plan: str, feature: str) -> bool:
-    """
-    Check if a plan includes a given feature.
-    Features: 'api_key', 'deploy', 'priority'
-    """
-    feature_gates: dict[str, list[str]] = {
+    gates: dict[str, list[str]] = {
         "api_key":  ["pro", "yearly"],
         "deploy":   ["basic", "pro", "yearly"],
         "priority": ["pro", "yearly"],
     }
-    return plan in feature_gates.get(feature, [])
+    return plan in gates.get(feature, [])
 
 
 def _next_plan(current: str) -> str | None:
@@ -240,22 +236,26 @@ def _next_plan(current: str) -> str | None:
     return order[idx + 1] if idx < len(order) - 2 else None
 
 
+def get_product_id(plan: str) -> str:
+    return {
+        "basic":  settings.polar_product_basic,
+        "pro":    settings.polar_product_pro,
+        "yearly": settings.polar_product_yearly,
+    }.get(plan, "")
+
+
 # ── Usage summary ──────────────────────────────────────────────
 
 async def get_usage_summary(user_id: str, plan: str) -> UsageSummary:
-    """Full usage summary for the billing/account page."""
     from datetime import date, timedelta
-
-    today      = date.today()
-    used       = await redis_client.get_current_usage(user_id, today.isoformat())
-    limit      = settings.get_rate_limit(plan)
-    resets_at  = datetime.combine(
+    today     = date.today()
+    used      = await redis_client.get_current_usage(user_id, today.isoformat())
+    limit     = settings.get_rate_limit(plan)
+    resets_at = datetime.combine(
         today + timedelta(days=1), datetime.min.time()
     ).isoformat() + "Z"
-
-    meta       = PLAN_META.get(plan, PLAN_META["free"])
-    next_pl    = _next_plan(plan)
-    upgrade_url = _checkout_url(next_pl) if next_pl else None
+    meta = PLAN_META.get(plan, PLAN_META["free"])
+    next_pl = _next_plan(plan)
 
     return UsageSummary(
         plan=plan,
@@ -267,33 +267,13 @@ async def get_usage_summary(user_id: str, plan: str) -> UsageSummary:
         resets_at=resets_at,
         features=meta["features"],
         missing=meta["missing"],
-        upgrade_url=upgrade_url,
+        upgrade_url=f"/api/v1/billing/checkout/{next_pl}" if next_pl else None,
     )
 
 
-# ── Checkout URLs ──────────────────────────────────────────────
-# RevenueCat web checkout URLs — configure in RC dashboard,
-# then store as HF Secrets: RC_CHECKOUT_BASIC, RC_CHECKOUT_PRO, RC_CHECKOUT_YEARLY
-
-def _checkout_url(plan: str | None) -> str | None:
-    if not plan:
-        return None
-    env_map = {
-        "basic":  getattr(settings, "rc_checkout_basic",  None),
-        "pro":    getattr(settings, "rc_checkout_pro",    None),
-        "yearly": getattr(settings, "rc_checkout_yearly", None),
-    }
-    return env_map.get(plan)
-
-
-def get_checkout_url(plan: str) -> str | None:
-    return _checkout_url(plan)
-
-
-# ── Billing flag management ────────────────────────────────────
+# ── Billing flag ───────────────────────────────────────────────
 
 async def flag_billing_issue(user_id: str) -> None:
-    """Mark a user's account as having a billing issue (from webhook)."""
     await users_collection().update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {
@@ -306,7 +286,6 @@ async def flag_billing_issue(user_id: str) -> None:
 
 
 async def clear_billing_flag(user_id: str) -> None:
-    """Clear a billing flag after successful payment (called on RENEWAL)."""
     await users_collection().update_one(
         {"_id": ObjectId(user_id)},
         {"$unset": {"billing_flagged": "", "billing_flagged_at": ""},
@@ -314,30 +293,27 @@ async def clear_billing_flag(user_id: str) -> None:
     )
 
 
-# ── Customer info (full) ───────────────────────────────────────
+# ── Customer info ──────────────────────────────────────────────
 
 async def get_customer_info(user_id: str) -> CustomerInfo:
     doc = await users_collection().find_one({"_id": ObjectId(user_id)})
     if not doc:
         raise ValueError(f"User {user_id} not found")
 
-    plan       = doc.get("plan", "free")
-    rc_id      = doc.get("revenuecat_customer_id")
-    mgmt_url   = await get_rc_management_url(rc_id) if rc_id else None
+    plan            = doc.get("plan", "free")
+    polar_cid       = doc.get("polar_customer_id")
+    portal_url      = await get_customer_portal_url(polar_cid) if polar_cid else None
 
-    # Build entitlements list
-    entitlements: list[str] = []
-    if check_feature_allowed(plan, "api_key"):   entitlements.append("api_key")
-    if check_feature_allowed(plan, "deploy"):    entitlements.append("deploy")
-    if check_feature_allowed(plan, "priority"):  entitlements.append("priority")
+    entitlements = [f for f in ("api_key", "deploy", "priority")
+                    if check_feature_allowed(plan, f)]
 
     return CustomerInfo(
         user_id=user_id,
         plan=plan,
-        revenuecat_id=rc_id,
+        polar_id=polar_cid,
         is_active=doc.get("is_active", True),
         billing_flagged=doc.get("billing_flagged", False),
         entitlements=entitlements,
-        management_url=mgmt_url,
+        portal_url=portal_url,
     )
     
