@@ -64,11 +64,15 @@ class Settings(BaseSettings):
     jwt_refresh_token_expire_days: int = 30
 
     # ── Payments ─────────────────────────────────────────────
-    revenuecat_api_key: str = Field(default="")
-    revenuecat_webhook_secret: str = Field(default="")
-    rc_checkout_basic:  str = Field(default="")
-    rc_checkout_pro:    str = Field(default="")
-    rc_checkout_yearly: str = Field(default="")
+    polar_access_token: str = Field(default="")          # Polar API key
+    polar_webhook_secret: str = Field(default="")        # Webhook secret from Polar dashboard
+    polar_organization_id: str = Field(default="")       # Your Polar org ID
+
+    # Product IDs from Polar dashboard (Settings → Products)
+    polar_product_basic:  str = Field(default="")        # Basic plan product ID
+    polar_product_pro:    str = Field(default="")        # Pro plan product ID
+    polar_product_yearly: str = Field(default="")        # Yearly plan product ID
+    
     # ── Search ───────────────────────────────────────────────
     duckduckgo_max_results: int = 10
 
