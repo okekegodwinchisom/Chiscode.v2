@@ -147,6 +147,16 @@
         Iterate Project
       </button>
 
+      <!-- Deploy button -->
+      <a id="deploy-btn"
+         href="#"
+         class="btn btn-primary btn-sm"
+         style="justify-content:center;width:100%;text-decoration:none;display:none"
+         title="Deploy your project to a live URL">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.35rem"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Deploy App
+      </a>
+
       <!-- Export row -->
       <div class="action-row">
         <button class="btn btn-ghost btn-sm" onclick="exportZip()" id="export-btn" title="Download all files as .zip">
@@ -400,6 +410,13 @@ async function loadProject() {
   document.getElementById('proj-info').style.display  = 'grid';
 
   // GitHub link
+  // Deploy button — visible when project is complete
+  if (p.status === 'complete') {
+    const deployBtn = document.getElementById('deploy-btn');
+    deployBtn.href  = `/projects/${projectId}/deploy`;
+    deployBtn.style.display = 'flex';
+  }
+
   if (p.github_repo_url) {
     document.getElementById('github-link').href = p.github_repo_url;
     document.getElementById('github-link-row').style.display = 'block';
