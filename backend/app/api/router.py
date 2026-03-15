@@ -16,17 +16,29 @@ from app.api.v1.projects  import router as projects_router
 from app.api.v1.users     import router as users_router
 from app.api.v1.webhooks  import router as webhooks_router
 from app.api.mcp_server   import router as mcp_router
+
+# Phase 5
 from app.api.v1.templates import router as templates_router
+
+# Phase 6
 from app.api.v1.deploy    import router as deploy_router
+
+# Phase 7
 from app.api.v1.billing   import router as billing_router
 
 api_router = APIRouter()
 
-api_router.include_router(auth.router)
+api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(projects_router)
 api_router.include_router(webhooks_router)
 api_router.include_router(mcp_router)
+
+# Phase 5
 api_router.include_router(templates_router)
+
+# Phase 6
 api_router.include_router(deploy_router)
+
+# Phase 7
 api_router.include_router(billing_router)
