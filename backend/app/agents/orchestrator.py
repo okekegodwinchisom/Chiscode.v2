@@ -77,7 +77,7 @@ async def _call_tool(tool: str, params: dict) -> dict:
     import httpx
     async with httpx.AsyncClient(timeout=120) as client:
         r = await client.post(
-            f"http://localhost:7860/api/mcp/tools/{tool}",
+            f"http://localhost:7860/api/v1/mcp/tools/{tool}",
             json={"params": params},
         )
         r.raise_for_status()
