@@ -15,7 +15,7 @@ from app.core.security import decode_token
 from app.db import redis_client
 from app.schemas.user import UserInDB
 from app.services import user_service
-from app.api.plan_guard import plan_guard
+from app.core.plan_guard import plan_guard
 
 logger = get_logger(__name__)
 
