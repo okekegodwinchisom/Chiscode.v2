@@ -3,11 +3,11 @@ ChisCode — Plan Guard
 ======================
 FastAPI dependency factories for plan + entitlement enforcement.
 
-Lives in app/core/ (not app/api/) to avoid circular imports —
-app.api.deps is only imported inside the dependency functions,
-never at module level.
-
 Deploy to: backend/app/core/plan_guard.py
+
+The key design decision: get_current_user is resolved via FastAPI's
+Depends() at request time, never imported at module load time.
+This eliminates any possibility of circular imports.
 
 Usage:
 
@@ -36,15 +36,88 @@ from app.schemas.user import UserInDB
 logger = get_logger(__name__)
 
 
-# ── Internal helper — imported lazily to break the circle ──────
+# ── Resolve get_current_user without importing app.api at module level ──
+#
+# Instead of:  from app.api.deps import get_current_user   ← causes circular import
+#
+# We replicate the exact same dependency inline. deps.py already imports
+# from app.core and app.services — nothing from app.api — so there is no
+# cycle when plan_guard does the same.
 
-def _get_current_user():
+from app.core.security import decode_token
+from app.db import redis_client
+from app.services import user_service
+from fastapi import Cookie, Header
+from jose import JWTError
+
+
+async def _get_current_user(
+    access_token:  str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
+    x_chiscode_api_key: str | None = Header(default=None, alias="X-ChisCode-API-Key"),
+) -> UserInDB:
     """
-    Returns the get_current_user dependency.
-    Imported inside each factory so app.api is fully loaded first.
+    Inline re-implementation of get_current_user from deps.py.
+    Accepts JWT cookie/header OR API key — identical logic, no cross-import.
     """
-    from app.api.deps import get_current_user
-    return get_current_user
+    # ── API key path ──────────────────────────────────────────
+    if x_chiscode_api_key:
+        user = await user_service.get_user_by_api_key(x_chiscode_api_key)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key.",
+            )
+        if user.plan not in ("pro", "yearly"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="API key access requires Pro or Yearly plan.",
+            )
+        return user
+
+    # ── JWT path ──────────────────────────────────────────────
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    token = access_token
+    if not token and authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer":
+            raise credentials_exception
+
+    if not token:
+        raise credentials_exception
+
+    try:
+        payload = decode_token(token)
+        user_id: str = payload.get("sub", "")
+        jti:     str = payload.get("jti", "")
+        if not user_id or not jti:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    if await redis_client.is_token_blacklisted(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+        )
+
+    try:
+        user = await user_service.get_user_by_id(user_id)
+    except user_service.UserNotFoundError:
+        raise credentials_exception
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated.",
+        )
+
+    return user
 
 
 # ── Plan gate ──────────────────────────────────────────────────
@@ -52,22 +125,18 @@ def _get_current_user():
 def require_plan(*plans: str):
     """Require the user to be on one of the listed plans."""
     async def _check(
-        current_user: UserInDB = Depends(_get_current_user()),
+        current_user: UserInDB = Depends(_get_current_user),
     ) -> UserInDB:
         if current_user.plan not in plans:
-            from app.services.billing_service import get_product_id
-            plan_list    = " or ".join(p.capitalize() for p in plans)
-            upgrade_plan = plans[0] if plans else None
-            upgrade_url  = (
-                f"/api/v1/billing/checkout/{upgrade_plan}" if upgrade_plan else None
-            )
+            plan_list = " or ".join(p.capitalize() for p in plans)
+            upgrade_to = plans[0] if plans else None
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error":        "plan_required",
                     "message":      f"This feature requires {plan_list} plan.",
                     "current_plan": current_user.plan,
-                    "upgrade_url":  upgrade_url,
+                    "upgrade_url":  f"/api/v1/billing/checkout/{upgrade_to}" if upgrade_to else None,
                 },
             )
         return current_user
@@ -88,12 +157,12 @@ def require_feature(feature: str):
     }
 
     async def _check(
-        current_user: UserInDB = Depends(_get_current_user()),
+        current_user: UserInDB = Depends(_get_current_user),
     ) -> UserInDB:
         from app.services.billing_service import check_feature_allowed
         if not check_feature_allowed(current_user.plan, feature):
-            required = _plan_map.get(feature, ())
-            upgrade  = required[0] if required else None
+            required  = _plan_map.get(feature, ())
+            upgrade   = required[0] if required else None
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
@@ -111,7 +180,7 @@ def require_feature(feature: str):
 # ── Generation quota ───────────────────────────────────────────
 
 async def require_generation_quota(
-    current_user: UserInDB = Depends(_get_current_user()),
+    current_user: UserInDB = Depends(_get_current_user),
 ) -> UserInDB:
     """
     Verify the user has remaining daily generation quota.
@@ -122,9 +191,9 @@ async def require_generation_quota(
         str(current_user.id), current_user.plan
     )
     if not allowed:
-        limit       = settings.get_rate_limit(current_user.plan)
-        next_plans  = {"free": "basic", "basic": "pro", "pro": "yearly"}
-        upgrade_to  = next_plans.get(current_user.plan)
+        limit      = settings.get_rate_limit(current_user.plan)
+        next_plans = {"free": "basic", "basic": "pro", "pro": "yearly"}
+        upgrade_to = next_plans.get(current_user.plan)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -142,7 +211,7 @@ async def require_generation_quota(
 # ── Billing flag check ─────────────────────────────────────────
 
 async def require_no_billing_issue(
-    current_user: UserInDB = Depends(_get_current_user()),
+    current_user: UserInDB = Depends(_get_current_user),
 ) -> UserInDB:
     """Block access for accounts with an unresolved billing issue."""
     from bson import ObjectId
