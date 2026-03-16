@@ -84,6 +84,7 @@
   </div>
 
   <!-- Sidebar -->
+<div class="sidebar-overlay" :class="sidebarOpen ? 'sidebar-overlay--visible' : ''" @click="sidebarOpen = false"></div>
   <aside class="sidebar" :class="sidebarOpen ? 'sidebar--open' : ''">
     <div class="sidebar__section">
       <div class="sidebar__label">Workspace</div>
