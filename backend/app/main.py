@@ -224,6 +224,13 @@ def create_app() -> FastAPI:
                 "projects/detail.html", {"request": request}
             )
 
+        # ── Dashboard: All projects page ─────────────────────────
+        @app.get("/dashboard/projects", response_class=HTMLResponse, include_in_schema=False)
+        async def all_projects_page(request: Request):
+            return templates.TemplateResponse(
+                "dashboard/projects.html", {"request": request}
+            )
+
         # ── Phase 5: Templates browser ────────────────────────────
         @app.get("/templates", response_class=HTMLResponse, include_in_schema=False)
         async def templates_page(request: Request):
