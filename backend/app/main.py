@@ -263,7 +263,7 @@ def create_app() -> FastAPI:
             return JSONResponse(status_code=404, content={"detail": "Not found."})
         if templates:
             return templates.TemplateResponse(
-                "404.html", {"request": request}, status_code=404
+                "404.html", {"request": request,"settings": settings}, status_code=404
             )
         return JSONResponse(status_code=404, content={"detail": "Not found."})
 
