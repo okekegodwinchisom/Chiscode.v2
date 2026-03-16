@@ -138,19 +138,19 @@ async def create_checkout_session(
 ) -> str | None:
     """
     Create a Polar checkout session and return the checkout URL.
-    Polar docs: POST /v1/checkouts/custom
+    Polar docs: POST /v1/checkouts
     """
     if not settings.polar_access_token or not product_id:
         return None
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
-                f"{_POLAR_BASE}/checkouts/custom",
+                f"{_POLAR_BASE}/checkouts",
                 headers=_polar_headers(),
                 json={
                     "product_id":         product_id,
                     "customer_email":     email,
-                    "customer_metadata":  {"chiscode_user_id": user_id},
+                    "metadata":  {"chiscode_user_id": user_id},
                     "success_url":        success_url,
                     "allow_discount_codes": True,
                 },
