@@ -252,6 +252,10 @@ def create_app() -> FastAPI:
         async def pricing_page(request: Request):
             return templates.TemplateResponse("pricing.html", {"request": request})
 
+        @app.get("/favicon.ico", response_class=HTMLResponse, include_in_schema=False)
+        async def favicon():
+            return HTMLResponse("")  # Or serve an actual favicon
+
     # ── Exception handlers ────────────────────────────────────────
     @app.exception_handler(404)
     async def not_found(request: Request, exc):
