@@ -445,6 +445,9 @@ function toggleCustomStack(on) {
 
 // ── Step 2 → 3: Confirm stack ─────────────────────────────────
 async function confirmStack() {
+  if (!_currentProjectId || _currentProjectId === 'null') {
+  showError(2, 'Project ID missing — please close and try again.'); return;
+}
   const btn = document.getElementById('gen-btn-2');
   btn.disabled=true; btn.textContent='Building…';
   document.getElementById('gen-error-2').style.display='none';
