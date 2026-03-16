@@ -271,7 +271,11 @@ const STATUS_COLOR = {
   stack_selected:'electric', quality_check:'electric', analyzing:'electric', committing:'amber',
   self_healing:'amber', cancelled:'ghost',
 };
-
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  console.error('Global error:', {msg, url, lineNo, columnNo, error});
+  return false;
+};
+  
 let _currentProjectId = null;
 let _selectedStackId  = null;
 let _useCustomStack   = false;
