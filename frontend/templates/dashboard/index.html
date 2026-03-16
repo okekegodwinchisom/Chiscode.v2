@@ -1,3 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ChisCode{% endblock %}
+
+{% block head %}
+<style>
+  .stat-card { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.25rem }
+  .stat-card__label { font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ghost);margin-bottom:.4rem }
+  .stat-card__value { font-family:var(--font-display);font-size:2rem;font-weight:800;color:var(--white) }
+  .stat-card__sub { font-size:.75rem;color:var(--ghost);margin-top:.2rem }
+  .project-row { display:flex;align-items:center;gap:1rem;padding:.9rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);transition:all .15s;margin-bottom:.75rem }
+  .project-row:hover { border-color:var(--muted);background:var(--raised) }
+  .project-row__name { font-weight:700;font-size:.9rem;color:var(--white) }
+  .project-row__meta { font-size:.75rem;color:var(--ghost);margin-top:.1rem }
+  .project-row__actions { margin-left:auto;display:flex;gap:.5rem;flex-shrink:0 }
+  .empty-state { text-align:center;padding:3rem;color:var(--ghost) }
+  .empty-state__icon { font-size:3rem;margin-bottom:1rem }
+  .usage-bar { height:4px;background:var(--border);border-radius:2px;margin-top:.5rem }
+  .usage-bar__fill { height:100%;background:var(--electric);border-radius:2px;transition:width .3s }
+
+  /* Stack picker */
+  .stack-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-top:.5rem }
+  .stack-card { border:2px solid var(--border);border-radius:12px;padding:1.25rem;cursor:pointer;transition:all .18s;background:var(--raised);position:relative;text-align:left }
+  .stack-card:hover { border-color:var(--electric);background:rgba(0,255,255,.04);transform:translateY(-2px) }
+  .stack-card.selected { border-color:var(--electric);background:rgba(0,255,255,.08);box-shadow:0 0 0 1px var(--electric) }
+  .stack-card__badge { position:absolute;top:.75rem;right:.75rem;font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .5rem;border-radius:4px;background:var(--surface);color:var(--ghost);border:1px solid var(--border) }
+  .stack-card.selected .stack-card__badge { background:var(--electric);color:var(--void);border-color:var(--electric) }
+  .stack-card__label { font-family:var(--font-display);font-size:.95rem;font-weight:700;color:var(--white);margin-bottom:.5rem;padding-right:3rem }
+  .stack-card__layers { display:flex;flex-direction:column;gap:.3rem;margin-bottom:.75rem }
+  .stack-layer { display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:var(--ghost) }
+  .stack-layer__val { color:var(--white);font-weight:500 }
+  .stack-card__rationale { font-size:.78rem;color:var(--ghost);line-height:1.5;border-top:1px solid var(--border);padding-top:.75rem }
+
+  /* Confirm panel */
+  .confirm-panel { background:linear-gradient(135deg,rgba(0,255,136,.06),rgba(0,255,255,.04));border:1px solid var(--neon);border-radius:10px;padding:1.25rem;margin-top:.5rem }
+  .confirm-panel__title { font-family:var(--font-display);font-size:.9rem;font-weight:700;color:var(--neon);margin-bottom:.5rem }
+
+  /* Resume banner */
+  .resume-banner { background:rgba(255,179,0,.08);border:1px solid var(--amber);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap }
+  .resume-banner__text { flex:1;font-size:.82rem;color:var(--amber) }
+</style>
+{% endblock %}
+
+{% block body %}
+<nav class="nav" x-data="{ sidebarOpen: false }">
+  <button @click="sidebarOpen = !sidebarOpen"
+    class="btn btn-ghost btn-sm" style="margin-right:.5rem;padding:.35rem .5rem"
+    aria-label="Toggle sidebar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  </button>
+  <a href="/" class="nav__logo">Chis<span>Code</span></a>
+  <div class="nav__links">
+    <span id="plan-badge" class="badge badge-ghost">Free</span>
+    <a href="#" id="logout-btn" hx-post="/api/v1/auth/logout" hx-swap="none" class="nav__link">Log Out</a>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" :class="sidebarOpen ? 'sidebar--open' : ''">
+    <div class="sidebar__section">
+      <div class="sidebar__label">Workspace</div>
+      <a href="/dashboard" class="sidebar__item sidebar__item--active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="/dashboard/projects" class="sidebar__item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+        All Projects
+      </a>
+      <a href="/templates" class="sidebar__item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Templates
+      </a>
+    </div>
+    <div class="sidebar__section">
+      <div class="sidebar__label">Account</div>
+      <a href="/pricing" class="sidebar__item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Billing
+      </a>
+      <a href="/api/v1/auth/github" class="sidebar__item" id="sidebar-github-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        <span id="sidebar-github-label">Connect GitHub</span>
+      </a>
+      <a href="/users/api-keys" class="sidebar__item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+        API Keys
+      </a>
+    </div>
+    <div style="padding:0 1.25rem;margin-top:auto;padding-top:2rem">
+      <div id="sidebar-usage" style="background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:1rem">
+        <div class="skeleton" style="height:12px;width:60%;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:6px;width:100%;margin-bottom:4px;border-radius:3px"></div>
+        <div class="skeleton" style="height:10px;width:50%"></div>
+      </div>
+    </div>
+  </aside>
+</nav>
+
+<!-- Main -->
+<div class="main-layout">
+  <main class="main-content">
+
+    <!-- Resume banner: shown if a project is mid-generation -->
+    <div id="resume-banner" class="resume-banner" style="display:none">
+      <div class="resume-banner__text">
+        ⚡ You have a project still generating — <strong id="resume-name"></strong>
+      </div>
+      <button class="btn btn-sm" style="border-color:var(--amber);color:var(--amber);background:rgba(255,179,0,.1)"
+        onclick="resumeProject()">Resume →</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('resume-banner').style.display='none'">Dismiss</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem">
+      <div>
+        <h1 style="font-size:1.75rem;font-weight:800;margin-bottom:.2rem">Dashboard</h1>
+        <p style="color:var(--ghost);font-size:.85rem">Build, iterate, and ship.</p>
+      </div>
+      <button class="btn btn-primary" onclick="openGenerateModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Project
+      </button>
+    </div>
+
+    <div id="stats-grid" class="grid-stats" style="margin-bottom:2rem">
+      <div class="stat-card skeleton" style="height:90px"></div>
+      <div class="stat-card skeleton" style="height:90px"></div>
+      <div class="stat-card skeleton" style="height:90px"></div>
+    </div>
+
+    <div style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between">
+      <h2 style="font-size:1.1rem;font-weight:700">Recent Projects</h2>
+      <a href="/dashboard/projects" class="btn btn-ghost btn-sm">View All</a>
+    </div>
+    <div id="projects-list">
+      <div class="project-row skeleton" style="height:70px;margin-bottom:.75rem"></div>
+      <div class="project-row skeleton" style="height:70px;margin-bottom:.75rem"></div>
+      <div class="project-row skeleton" style="height:70px"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     GENERATE MODAL
+     ═══════════════════════════════════════════ -->
+<div id="generate-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeGenerateModal()">
+  <div style="background:var(--deep);border:1px solid var(--border);border-radius:16px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <div style="display:flex;gap:.35rem" id="step-dots">
+          <div class="step-dot step-dot--active" id="dot-1"></div>
+          <div class="step-dot" id="dot-2"></div>
+          <div class="step-dot" id="dot-3"></div>
+        </div>
+        <h2 id="modal-title" style="font-family:var(--font-display);font-size:1.1rem;font-weight:800">New Project</h2>
+      </div>
+      <button onclick="closeGenerateModal()" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.4rem;line-height:1;padding:.25rem">×</button>
+    </div>
+
+    <!-- Step 1: Prompt -->
+    <div id="step-1" style="display:flex;flex-direction:column;gap:1rem;padding:1.5rem">
+      <div>
+        <label class="form-label">What do you want to build?</label>
+        <textarea id="gen-prompt" class="form-input" rows="4"
+          placeholder="e.g. A SaaS dashboard for tracking freelance invoices with charts, client management, and PDF export."
+          style="resize:vertical;min-height:100px"></textarea>
+      </div>
+      <div>
+        <label class="form-label">Project name <span style="color:var(--muted)">(optional)</span></label>
+        <input id="gen-name" class="form-input" type="text" placeholder="my-awesome-app">
+      </div>
+      <div id="gen-error-1" style="display:none;color:var(--plasma);font-size:.8rem;background:rgba(255,61,107,.08);border:1px solid rgba(255,61,107,.25);border-radius:6px;padding:.6rem .9rem"></div>
+      <div style="display:flex;gap:.75rem;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" onclick="closeGenerateModal()">Cancel</button>
+        <button id="gen-btn-1" class="btn btn-primary" onclick="analyzePrompt()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Analyze & Suggest Stack
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Stack picker -->
+    <div id="step-2" style="display:none;flex-direction:column;gap:1rem;padding:1.5rem">
+      <p style="font-size:.85rem;color:var(--ghost)">Our AI analyzed your prompt and suggests these stacks. Pick the best fit or customize.</p>
+      <div id="gen-error-2" style="display:none;color:var(--plasma);font-size:.8rem;background:rgba(255,61,107,.08);border:1px solid rgba(255,61,107,.25);border-radius:6px;padding:.6rem .9rem"></div>
+      <div id="stack-grid" class="stack-grid"></div>
+
+      <!-- Custom stack toggle -->
+      <label class="custom-stack-toggle">
+        <input type="checkbox" id="custom-toggle" onchange="toggleCustomStack(this.checked)" style="margin:0">
+        Use a custom stack instead
+      </label>
+      <div id="custom-stack-fields" class="custom-stack-fields">
+        <div><label class="form-label" style="font-size:.72rem">Frontend</label><input id="cs-frontend" class="form-input" placeholder="e.g. React + Vite"></div>
+        <div><label class="form-label" style="font-size:.72rem">Backend</label><input id="cs-backend" class="form-input" placeholder="e.g. FastAPI"></div>
+        <div><label class="form-label" style="font-size:.72rem">Database</label><input id="cs-database" class="form-input" placeholder="e.g. PostgreSQL"></div>
+        <div><label class="form-label" style="font-size:.72rem">Extras</label><input id="cs-extras" class="form-input" placeholder="e.g. Redis, S3"></div>
+      </div>
+
+      <div style="display:flex;gap:.75rem;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm" onclick="goToStep(1)">← Back</button>
+        <button id="gen-btn-2" class="btn btn-primary" onclick="confirmStack()">
+          Build with this Stack →
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Generation log -->
+    <div id="step-3" style="display:none;flex-direction:column;gap:1rem;padding:1.5rem">
+      <div class="terminal" style="min-height:220px;max-height:340px;overflow-y:auto">
+        <div id="gen-log-body" class="terminal__body">
+          <span class="terminal__cursor"></span>
+        </div>
+      </div>
+
+      <!-- Quality issues -->
+      <div id="quality-issues" style="display:none;background:rgba(255,179,0,.07);border:1px solid var(--amber);border-radius:8px;padding:.85rem 1rem">
+        <div style="font-size:.78rem;font-weight:700;color:var(--amber);margin-bottom:.4rem">⚠ Quality issues found</div>
+        <div id="quality-issues-list" style="font-size:.75rem;color:var(--ghost);font-family:var(--font-code)"></div>
+      </div>
+
+      <!-- Confirm panel -->
+      <div id="confirm-panel" style="display:none" class="confirm-panel">
+        <div class="confirm-panel__title">🚀 Ready to ship</div>
+        <p style="font-size:.82rem;color:var(--ghost);margin-bottom:1rem">Review your files in the project view, then push to GitHub.</p>
+
+        <!-- GitHub login warning -->
+        <div id="github-login-warning" style="display:none;margin-bottom:1rem;padding:.75rem 1rem;background:rgba(255,179,0,.08);border:1px solid var(--amber);border-radius:8px;font-size:.8rem;color:var(--amber)">
+          ⚠ You haven't connected GitHub yet.
+          <a href="/api/v1/auth/github" style="color:var(--electric);font-weight:700;margin-left:.35rem">Connect GitHub →</a>
+          to push your code. Or you can still download the project.
+        </div>
+
+        <div style="display:flex;gap:.75rem;align-items:center;margin-bottom:.75rem">
+          <input id="commit-message" type="text" class="form-input" placeholder="Initial commit — generated by ChisCode" style="font-size:.82rem"/>
+          <button id="confirm-btn" class="btn btn-primary" style="flex-shrink:0;white-space:nowrap" onclick="confirmProject()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            Push to GitHub
+          </button>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-ghost btn-sm" onclick="viewProject()">View Files</button>
+          <button class="btn btn-ghost btn-sm" onclick="skipToProject()">Skip GitHub, view project →</button>
+        </div>
+        <div id="confirm-error" style="display:none;color:var(--plasma);font-size:.78rem;margin-top:.5rem"></div>
+      </div>
+
+      <!-- GitHub done -->
+      <div id="github-done-panel" style="display:none;background:rgba(0,255,136,.06);border:1px solid var(--neon);border-radius:10px;padding:1.25rem">
+        <div style="font-size:.9rem;font-weight:700;color:var(--neon);margin-bottom:.5rem">🎉 Pushed to GitHub!</div>
+        <div id="repo-url-display" style="font-size:.82rem;margin-bottom:.75rem"></div>
+        <div style="display:flex;gap:.5rem">
+          <a id="repo-link" href="#" target="_blank" class="btn btn-primary btn-sm">Open Repository →</a>
+          <button class="btn btn-ghost btn-sm" onclick="viewProject()">View Project Files</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API = '/api/v1';
+const STATUS_COLOR = {
+  complete:'neon', failed:'plasma', generating:'electric',
+  pending:'ghost', awaiting_confirmation:'amber', awaiting_stack_selection:'electric',
+  stack_selected:'electric', quality_check:'electric', analyzing:'electric', committing:'amber',
+  self_healing:'amber', cancelled:'ghost',
+};
+
+let _currentProjectId = null;
+let _selectedStackId  = null;
+let _useCustomStack   = false;
+let _currentStep      = 1;
+let _resumeProjectId  = null;
+
+// ── Auth ──────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, { credentials:'include', ...opts });
+  if (res.status === 401) { window.location.href = '/login'; return null; }
+  return res;
+}
+
+// ── Modal ─────────────────────────────────────────────────────
+function openGenerateModal() { resetModal(); document.getElementById('generate-modal').style.display='flex'; }
+function closeGenerateModal() { document.getElementById('generate-modal').style.display='none'; }
+
+function resetModal() {
+  _currentProjectId = null;
+  _selectedStackId  = null;
+  _useCustomStack   = false;
+  ['gen-prompt','gen-name','commit-message'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('gen-log-body').innerHTML = '<span class="terminal__cursor"></span>';
+  ['quality-issues','confirm-panel','github-done-panel','gen-error-1','gen-error-2','github-login-warning'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
+  goToStep(1);
+}
+
+function goToStep(n) {
+  _currentStep = n;
+  [1,2,3].forEach(i => {
+    const el  = document.getElementById('step-' + i);
+    el.style.display = i === n ? 'flex' : 'none';
+    const dot = document.getElementById('dot-' + i);
+    dot.className = 'step-dot' + (i===n?' step-dot--active':i<n?' step-dot--done':'');
+  });
+  document.getElementById('modal-title').textContent = ['New Project','Choose Your Stack','Generating…'][n-1];
+}
+
+// ── SSE reader ────────────────────────────────────────────────
+async function readSSE(response, handlers) {
+  const reader  = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream:true });
+    const lines = buffer.split('\n'); buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try { const msg = JSON.parse(line.slice(6)); const fn = handlers[msg.event]; if(fn) fn(msg); } catch {}
+    }
+  }
+}
+
+
 // ── Log terminal ──────────────────────────────────────────────
 function addLog(msg, cls='') {
   const body = document.getElementById('gen-log-body');
