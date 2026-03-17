@@ -123,6 +123,13 @@ async def node_analyze(state: ProjectState) -> ProjectState:
         })
         spec = result["spec"]
 
+        # Force a small delay to ensure connection is ready
+        await asyncio.sleep(0.5)
+        await _push(state, "stack_suggestion",
+                    options=stacks["options"],
+                    message="Pick your tech stack to continue",
+                    project_id=state["project_id"])
+
         # Suggest stacks
         await _push(state, "log", message="🧠 Evaluating best tech stacks...")
         stacks = await _call_tool("stack_advisor", {
