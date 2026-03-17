@@ -304,12 +304,47 @@ window.onerror = function(msg, url, lineNo, columnNo, error) {
   console.error('Global error:', {msg, url, lineNo, columnNo, error});
   return false;
 };
-  
+
 let _currentProjectId = null;
 let _selectedStackId  = null;
 let _useCustomStack   = false;
 let _currentStep      = 1;
 let _resumeProjectId  = null;
+
+// ── Helpers ───────────────────────────────────────────────────
+function safeStr(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object') return val.message || val.detail || val.msg || JSON.stringify(val);
+  return String(val);
+}
+
+function safeErrMsg(err, fallback) {
+  if (!err) return fallback || 'Unknown error';
+  if (typeof err === 'string') return err;
+  if (Array.isArray(err.detail)) return err.detail.map(e => e.msg || safeStr(e)).join(', ');
+  if (err.detail) return safeStr(err.detail);
+  if (err.message) return err.message;
+  return fallback || 'Unknown error';
+}
+
+function escHtml(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showError(step, msg) {
+  const el = document.getElementById('gen-error-' + step);
+  if (el) { el.textContent = safeStr(msg); el.style.display = 'block'; }
+}
+
+function addLog(msg, cls='') {
+  const body = document.getElementById('gen-log-body');
+  const line = document.createElement('div');
+  line.className = 'terminal__line' + (cls ? ' terminal__line--' + cls : '');
+  line.textContent = safeStr(msg);
+  body.insertBefore(line, body.lastChild);
+  body.scrollTop = body.scrollHeight;
+}
 
 // ── Auth ──────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
@@ -319,17 +354,19 @@ async function apiFetch(path, opts = {}) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────
-function openGenerateModal() { resetModal(); document.getElementById('generate-modal').style.display='flex'; }
-function closeGenerateModal() { document.getElementById('generate-modal').style.display='none'; }
+function openGenerateModal() { resetModal(); document.getElementById('generate-modal').style.display = 'flex'; }
+function closeGenerateModal() { document.getElementById('generate-modal').style.display = 'none'; }
 
 function resetModal() {
   _currentProjectId = null;
   _selectedStackId  = null;
   _useCustomStack   = false;
-  ['gen-prompt','gen-name','commit-message'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  ['gen-prompt','gen-name','commit-message'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   document.getElementById('gen-log-body').innerHTML = '<span class="terminal__cursor"></span>';
   ['quality-issues','confirm-panel','github-done-panel','gen-error-1','gen-error-2','github-login-warning'].forEach(id => {
-    const el = document.getElementById(id); if(el) el.style.display='none';
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
   goToStep(1);
 }
@@ -357,27 +394,22 @@ async function readSSE(response, handlers) {
     const lines = buffer.split('\n'); buffer = lines.pop();
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
-      try { const msg = JSON.parse(line.slice(6)); const fn = handlers[msg.event]; if(fn) fn(msg); } catch {}
+      try {
+        const msg = JSON.parse(line.slice(6));
+        const fn  = handlers[msg.event];
+        if (fn) fn(msg);
+      } catch(e) {
+        console.warn('SSE parse error:', e, line);
+      }
     }
   }
-}
-
-
-// ── Log terminal ──────────────────────────────────────────────
-function addLog(msg, cls='') {
-  const body = document.getElementById('gen-log-body');
-  const line = document.createElement('div');
-  line.className = 'terminal__line' + (cls ? ' terminal__line--'+cls : '');
-  line.textContent = msg;
-  body.insertBefore(line, body.lastChild);
-  body.scrollTop = body.scrollHeight;
 }
 
 // ── Step 1: Analyze prompt ────────────────────────────────────
 async function analyzePrompt() {
   const prompt = document.getElementById('gen-prompt').value.trim();
   const name   = document.getElementById('gen-name').value.trim();
-  if (!prompt) { showError(1,'Please describe your application first.'); return; }
+  if (!prompt) { showError(1, 'Please describe your application first.'); return; }
 
   const btn = document.getElementById('gen-btn-1');
   btn.disabled = true; btn.textContent = 'Analyzing…';
@@ -388,19 +420,31 @@ async function analyzePrompt() {
 
   let res;
   try {
-    res = await apiFetch('/projects/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    res = await apiFetch('/projects/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   } catch(e) {
-    showError(1,'Network error. Please try again.');
-    btn.disabled=false; btn.textContent='Analyze & Suggest Stack'; return;
+    showError(1, 'Network error. Please try again.');
+    btn.disabled = false; btn.textContent = 'Analyze & Suggest Stack'; return;
   }
 
   if (!res || !res.ok) {
-    const err = res ? await res.json() : {};
-    showError(1, err.detail || 'Analysis failed.');
-    btn.disabled=false; btn.textContent='Analyze & Suggest Stack'; return;
+    let errMsg = 'Analysis failed.';
+    try { const err = await res.json(); errMsg = safeErrMsg(err, 'Analysis failed.'); } catch {}
+    showError(1, errMsg);
+    btn.disabled = false; btn.textContent = 'Analyze & Suggest Stack'; return;
   }
 
   _currentProjectId = res.headers.get('X-Project-Id');
+  console.log('Project ID from header:', _currentProjectId);
+
+  if (!_currentProjectId || _currentProjectId === 'null') {
+    // Fallback: try to read from body after SSE completes
+    console.warn('X-Project-Id header missing — will attempt to recover from SSE events');
+  }
+
   goToStep(2);
 
   const stackGrid = document.getElementById('stack-grid');
@@ -408,9 +452,14 @@ async function analyzePrompt() {
 
   await readSSE(res, {
     stack_suggestion: msg => {
+      // Some backends send project_id in the SSE event as fallback
+      if (msg.project_id && (!_currentProjectId || _currentProjectId === 'null')) {
+        _currentProjectId = msg.project_id;
+        console.log('Recovered project ID from SSE:', _currentProjectId);
+      }
       const stacks = msg.stacks || [];
       stackGrid.innerHTML = stacks.map((s, i) => `
-        <div class="stack-card${i===0?' selected':''}" id="stack-${s.id||i}" onclick="selectStack(this,'${s.id||i}')">
+        <div class="stack-card${i===0?' selected':''}" id="stack-${escHtml(s.id||String(i))}" onclick="selectStack(this,'${escHtml(s.id||String(i))}')">
           <span class="stack-card__badge">${s.recommended?'Recommended':i===0?'Default':''}</span>
           <div class="stack-card__label">${escHtml(s.name||'Stack '+(i+1))}</div>
           <div class="stack-card__layers">
@@ -422,10 +471,21 @@ async function analyzePrompt() {
         </div>`).join('');
       if (stacks.length) { _selectedStackId = stacks[0].id || '0'; }
     },
-    error: msg => { goToStep(1); showError(1, typeof msg==='string'?msg:(msg.message||msg.detail||'Analysis failed.')); btn.disabled=false; btn.textContent='Analyze & Suggest Stack'; },
+    project_created: msg => {
+      // Explicit project_created event as another fallback
+      if (msg.project_id && (!_currentProjectId || _currentProjectId === 'null')) {
+        _currentProjectId = msg.project_id;
+        console.log('Got project ID from project_created event:', _currentProjectId);
+      }
+    },
+    error: msg => {
+      goToStep(1);
+      showError(1, safeErrMsg(msg, 'Analysis failed.'));
+      btn.disabled = false; btn.textContent = 'Analyze & Suggest Stack';
+    },
   });
 
-  btn.disabled=false; btn.textContent='Analyze & Suggest Stack';
+  btn.disabled = false; btn.textContent = 'Analyze & Suggest Stack';
 }
 
 function selectStack(el, id) {
@@ -446,68 +506,78 @@ function toggleCustomStack(on) {
 // ── Step 2 → 3: Confirm stack ─────────────────────────────────
 async function confirmStack() {
   if (!_currentProjectId || _currentProjectId === 'null') {
-  showError(2, 'Project ID missing — please close and try again.'); return;
-}
+    showError(2, 'Project ID missing — please close and try again.'); return;
+  }
+
   const btn = document.getElementById('gen-btn-2');
-  btn.disabled=true; btn.textContent='Building…';
-  document.getElementById('gen-error-2').style.display='none';
+  btn.disabled = true; btn.textContent = 'Building…';
+  document.getElementById('gen-error-2').style.display = 'none';
 
   let stackPayload;
   if (_useCustomStack) {
     stackPayload = {
-      custom: true,
+      custom:   true,
       frontend: document.getElementById('cs-frontend').value.trim(),
       backend:  document.getElementById('cs-backend').value.trim(),
       database: document.getElementById('cs-database').value.trim(),
       extras:   document.getElementById('cs-extras').value.trim().split(',').map(s=>s.trim()).filter(Boolean),
     };
   } else {
-    if (!_selectedStackId) { showError(2,'Please select a stack first.'); btn.disabled=false; btn.textContent='Build with this Stack →'; return; }
+    if (!_selectedStackId) {
+      showError(2, 'Please select a stack first.');
+      btn.disabled = false; btn.textContent = 'Build with this Stack →'; return;
+    }
     stackPayload = { stack_id: _selectedStackId };
   }
 
-  const selRes = await apiFetch('/projects/'+_currentProjectId+'/select-stack', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(stackPayload),
+  const selRes = await apiFetch('/projects/' + _currentProjectId + '/select-stack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(stackPayload),
   });
+
   if (!selRes || !selRes.ok) {
-    const err = selRes ? await selRes.json() : {};
-    showError(2, err.detail||'Stack selection failed.');
-    btn.disabled=false; btn.textContent='Build with this Stack →'; return;
+    let errMsg = 'Stack selection failed.';
+    try { const err = await selRes.json(); errMsg = safeErrMsg(err, 'Stack selection failed.'); } catch {}
+    showError(2, errMsg);
+    btn.disabled = false; btn.textContent = 'Build with this Stack →'; return;
   }
 
   goToStep(3);
   addLog('Stack confirmed — generating files…');
 
-  const genRes = await apiFetch('/projects/'+_currentProjectId+'/generate/run', { method:'POST' });
+  const genRes = await apiFetch('/projects/' + _currentProjectId + '/generate/run', { method: 'POST' });
+
   if (!genRes || !genRes.ok) {
-    const err = genRes ? await genRes.json() : {};
-    addLog('❌ ' + (err.detail||'Generation failed.'));
-    btn.disabled=false; btn.textContent='Build with this Stack →'; return;
+    let errMsg = 'Generation failed.';
+    try { const err = await genRes.json(); errMsg = safeErrMsg(err, 'Generation failed.'); } catch {}
+    addLog('❌ ' + errMsg);
+    btn.disabled = false; btn.textContent = 'Build with this Stack →'; return;
   }
 
   await readSSE(genRes, {
-    log:    msg => addLog(msg.message),
-    status: msg => addLog('→ '+msg.status+': '+msg.message, msg.status==='generating'?'complete':''),
-    file:   msg => addLog('✅ '+msg.filename, 'complete'),
+    log:    msg => addLog(safeStr(msg.message)),
+    status: msg => addLog('→ ' + safeStr(msg.status) + ': ' + safeStr(msg.message), msg.status==='generating'?'complete':''),
+    file:   msg => addLog('✅ ' + safeStr(msg.filename), 'complete'),
     issues: msg => {
       if (msg.issues?.length) {
-        document.getElementById('quality-issues').style.display='block';
-        document.getElementById('quality-issues-list').innerHTML = msg.issues.slice(0,8).map(i=>`<div>${escHtml(i)}</div>`).join('');
+        document.getElementById('quality-issues').style.display = 'block';
+        document.getElementById('quality-issues-list').innerHTML =
+          msg.issues.slice(0,8).map(i => `<div>${escHtml(safeStr(i))}</div>`).join('');
       }
     },
     complete: msg => {
-      addLog('✅ '+(msg.file_count||'?')+' files generated!', 'complete');
+      addLog('✅ ' + (msg.file_count||'?') + ' files generated!', 'complete');
       showConfirmPanel();
     },
-    error: msg => addLog('❌ ' + (msg.message||'Generation failed.')),
+    error: msg => addLog('❌ ' + safeErrMsg(msg, 'Generation failed.')),
   });
 
-  btn.disabled=false; btn.textContent='Build with this Stack →';
+  btn.disabled = false; btn.textContent = 'Build with this Stack →';
 }
 
 // ── Show confirm panel with GitHub check ──────────────────────
 async function showConfirmPanel() {
-  // Check if user has GitHub connected
   const res = await apiFetch('/users/me');
   if (res && res.ok) {
     const user = await res.json();
@@ -518,7 +588,6 @@ async function showConfirmPanel() {
   }
   document.getElementById('confirm-panel').style.display = 'block';
   document.getElementById('confirm-panel').scrollIntoView({ behavior:'smooth', block:'nearest' });
-  // Refresh projects list so new project appears
   loadProjects();
 }
 
@@ -528,84 +597,79 @@ async function confirmProject() {
   const btn     = document.getElementById('confirm-btn');
   const errEl   = document.getElementById('confirm-error');
   const message = document.getElementById('commit-message').value.trim();
-  errEl.style.display='none';
-  btn.disabled=true; btn.textContent='Pushing…';
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Pushing…';
 
-  const res = await apiFetch('/projects/'+_currentProjectId+'/confirm', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ commit_message:message||null, push_to_github:true }),
+  const res = await apiFetch('/projects/' + _currentProjectId + '/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_message: message || null, push_to_github: true }),
   });
 
-  if (!res) { btn.disabled=false; btn.textContent='Push to GitHub'; return; }
+  if (!res) { btn.disabled = false; btn.textContent = 'Push to GitHub'; return; }
 
   if (!res.ok) {
-    const err = await res.json();
-    // If GitHub not connected, redirect to OAuth
-    if (err.detail && (err.detail.includes('GitHub') || err.detail.includes('token'))) {
+    let errDetail = '';
+    try { const err = await res.json(); errDetail = safeErrMsg(err, ''); } catch {}
+    if (errDetail && (errDetail.includes('GitHub') || errDetail.includes('token'))) {
       sessionStorage.setItem('chiscode_after_github', '/dashboard');
-      window.location.href = '/api/v1/auth/github';
-      return;
+      window.location.href = '/api/v1/auth/github'; return;
     }
-    errEl.textContent = err.detail || 'Push failed.';
-    errEl.style.display='block';
-    btn.disabled=false; btn.textContent='Push to GitHub'; return;
+    errEl.textContent = errDetail || 'Push failed.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Push to GitHub'; return;
   }
 
   addLog('📡 Connecting to GitHub…', 'complete');
+
   await readSSE(res, {
-    log:    msg => addLog(msg.message),
-    status: msg => addLog('→ '+msg.message),
+    log:    msg => addLog(safeStr(msg.message)),
+    status: msg => addLog('→ ' + safeStr(msg.message)),
     github_done: msg => {
-      document.getElementById('confirm-panel').style.display='none';
+      document.getElementById('confirm-panel').style.display = 'none';
       const panel = document.getElementById('github-done-panel');
       document.getElementById('repo-url-display').innerHTML =
-        '<a href="'+msg.repo_url+'" target="_blank" style="color:var(--electric)">'+msg.repo_url+'</a>';
+        '<a href="' + escHtml(msg.repo_url) + '" target="_blank" style="color:var(--electric)">' + escHtml(msg.repo_url) + '</a>';
       document.getElementById('repo-link').href = msg.repo_url;
-      panel.style.display='block';
+      panel.style.display = 'block';
       loadProjects(); loadUsage();
     },
     error: msg => {
-      errEl.textContent = msg.message;
-      errEl.style.display='block';
-      btn.disabled=false; btn.textContent='Push to GitHub';
+      errEl.textContent = safeErrMsg(msg, 'Push failed.');
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Push to GitHub';
     },
   });
 }
 
 function viewProject() {
-  if (_currentProjectId) { closeGenerateModal(); window.location.href='/projects/'+_currentProjectId; }
+  if (_currentProjectId) { closeGenerateModal(); window.location.href = '/projects/' + _currentProjectId; }
 }
 function skipToProject() {
-  if (_currentProjectId) { closeGenerateModal(); window.location.href='/projects/'+_currentProjectId; }
+  if (_currentProjectId) { closeGenerateModal(); window.location.href = '/projects/' + _currentProjectId; }
 }
 
 // ── Resume interrupted project ────────────────────────────────
 async function resumeProject() {
   if (!_resumeProjectId) return;
   _currentProjectId = _resumeProjectId;
-  document.getElementById('resume-banner').style.display='none';
+  document.getElementById('resume-banner').style.display = 'none';
   openGenerateModal();
   goToStep(3);
   addLog('Resuming generation…');
 
-  const genRes = await apiFetch('/projects/'+_currentProjectId+'/generate/run', { method:'POST' });
-  if (!genRes || !genRes.ok) { addLog('❌ Could not resume — try opening the project directly.'); return; }
+  const genRes = await apiFetch('/projects/' + _currentProjectId + '/generate/run', { method: 'POST' });
+  if (!genRes || !genRes.ok) {
+    addLog('❌ Could not resume — try opening the project directly.'); return;
+  }
 
   await readSSE(genRes, {
-    log:    msg => addLog(msg.message),
-    status: msg => addLog('→ '+msg.status+': '+msg.message),
-    complete: msg => { addLog('✅ '+(msg.file_count||'')+'files ready!','complete'); showConfirmPanel(); },
-    error: msg => addLog('❌ '+msg.message),
+    log:      msg => addLog(safeStr(msg.message)),
+    status:   msg => addLog('→ ' + safeStr(msg.status) + ': ' + safeStr(msg.message)),
+    file:     msg => addLog('✅ ' + safeStr(msg.filename), 'complete'),
+    complete: msg => { addLog('✅ ' + (msg.file_count||'') + ' files ready!', 'complete'); showConfirmPanel(); },
+    error:    msg => addLog('❌ ' + safeErrMsg(msg, 'Resume failed.')),
   });
-}
-
-// ── Utilities ─────────────────────────────────────────────────
-function showError(step, msg) {
-  const el = document.getElementById('gen-error-'+step);
-  if (el) { el.textContent=msg; el.style.display='block'; }
-}
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Load usage ────────────────────────────────────────────────
@@ -613,7 +677,7 @@ async function loadUsage() {
   const res = await apiFetch('/users/me/usage');
   if (!res) return;
   const d = await res.json();
-  const pct = Math.round((d.used_today/d.daily_limit)*100)||0;
+  const pct = Math.round((d.used_today / d.daily_limit) * 100) || 0;
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card">
@@ -638,11 +702,13 @@ async function loadUsage() {
     <div style="display:flex;justify-content:space-between;margin-top:.4rem;font-size:.75rem;color:var(--ghost)">
       <span>${d.used_today} used</span><span>${d.remaining} left</span>
     </div>
-    <a href="/pricing" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;margin-top:.75rem;font-size:.72rem">${d.plan==='free'?'Upgrade Plan':'Manage Billing'}</a>`;
+    <a href="/pricing" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;margin-top:.75rem;font-size:.72rem">
+      ${d.plan==='free'?'Upgrade Plan':'Manage Billing'}
+    </a>`;
 
   const badge = document.getElementById('plan-badge');
   badge.textContent = d.plan.toUpperCase();
-  badge.className = 'badge badge-'+(d.plan==='pro'||d.plan==='yearly'?'neon':d.plan==='basic'?'electric':'ghost');
+  badge.className = 'badge badge-' + (d.plan==='pro'||d.plan==='yearly'?'neon':d.plan==='basic'?'electric':'ghost');
 }
 
 // ── Load projects ─────────────────────────────────────────────
@@ -652,14 +718,17 @@ async function loadProjects() {
   const projects = await res.json();
   const el = document.getElementById('projects-list');
 
-  if (!Array.isArray(projects)||!projects.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-state__icon">⚡</div>
-      <p style="font-size:.9rem">No projects yet. Click <strong style="color:var(--white)">New Project</strong> to start building.</p></div>`;
+  if (!Array.isArray(projects) || !projects.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-state__icon">⚡</div>
+      <p style="font-size:.9rem">No projects yet. Click <strong style="color:var(--white)">New Project</strong> to start building.</p>
+    </div>`;
     return;
   }
 
-  // Check for in-progress project for resume banner
-  const inProgress = projects.find(p => ['generating','analyzing','pending','stack_selected','quality_check','self_healing'].includes(p.status));
+  const inProgress = projects.find(p =>
+    ['generating','analyzing','pending','stack_selected','quality_check','self_healing'].includes(p.status)
+  );
   if (inProgress) {
     _resumeProjectId = inProgress._id;
     document.getElementById('resume-name').textContent = inProgress.name;
@@ -667,18 +736,18 @@ async function loadProjects() {
   }
 
   el.innerHTML = projects.slice(0,8).map(p => {
-    const isComplete = p.status==='complete';
+    const isComplete = p.status === 'complete';
     const isActive   = ['generating','analyzing','pending','quality_check','self_healing'].includes(p.status);
     return `<div class="project-row">
       <div style="flex:1;min-width:0">
         <div class="project-row__name">${escHtml(p.name)}</div>
         <div class="project-row__meta">${p.file_count||0} files · v${p.current_version||0} · ${new Date(p.updated_at).toLocaleDateString()}</div>
       </div>
-      <span class="badge badge-${STATUS_COLOR[p.status]||'ghost'}">${p.status.replace(/_/g,' ')}</span>
+      <span class="badge badge-${STATUS_COLOR[p.status]||'ghost'}">${escHtml(p.status.replace(/_/g,' '))}</span>
       <div class="project-row__actions">
-        ${isActive?`<button class="btn btn-sm" style="color:var(--amber);border-color:rgba(255,179,0,.3);background:rgba(255,179,0,.08)" onclick="_resumeProjectId='${p._id}';resumeProject()">Resume</button>`:''}
-        ${isComplete?`<a href="/projects/${p._id}/deploy" class="btn btn-ghost btn-sm">Deploy</a>`:''}
-        <a href="/projects/${p._id}" class="btn btn-ghost btn-sm">Open</a>
+        ${isActive?`<button class="btn btn-sm" style="color:var(--amber);border-color:rgba(255,179,0,.3);background:rgba(255,179,0,.08)" onclick="_resumeProjectId='${escHtml(p._id)}';resumeProject()">Resume</button>`:''}
+        ${isComplete?`<a href="/projects/${escHtml(p._id)}/deploy" class="btn btn-ghost btn-sm">Deploy</a>`:''}
+        <a href="/projects/${escHtml(p._id)}" class="btn btn-ghost btn-sm">Open</a>
       </div>
     </div>`;
   }).join('');
@@ -687,24 +756,9 @@ async function loadProjects() {
 // ── Load user & update GitHub sidebar item ────────────────────
 async function loadUser() {
   const res = await apiFetch('/users/me');
-  if (!res||!res.ok) return;
+  if (!res || !res.ok) return;
   const user = await res.json();
   const label = document.getElementById('sidebar-github-label');
   const link  = document.getElementById('sidebar-github-link');
   if (user.github_username) {
-    label.textContent = '@'+user.github_username;
-    link.href = 'https://github.com/'+user.github_username;
-    link.target = '_blank';
-  }
-}
-
-document.getElementById('logout-btn').addEventListener('htmx:afterRequest', () => {
-  window.location.href = '/login';
-});
-
-// ── Boot ──────────────────────────────────────────────────────
-loadUsage();
-loadProjects();
-loadUser();
-</script>
-{% endblock %}
+    label.textContent = '@' + us
