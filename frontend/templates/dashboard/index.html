@@ -527,7 +527,7 @@ async function confirmStack() {
       showError(2, 'Please select a stack first.');
       btn.disabled = false; btn.textContent = 'Build with this Stack →'; return;
     }
-    stackPayload = { stack_id: _selectedStackId };
+    stackPayload = { option_id: _selectedStackId };
   }
 
   const selRes = await apiFetch('/projects/' + _currentProjectId + '/select-stack', {
