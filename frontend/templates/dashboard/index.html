@@ -422,7 +422,7 @@ async function analyzePrompt() {
         </div>`).join('');
       if (stacks.length) { _selectedStackId = stacks[0].id || '0'; }
     },
-    error: msg => { goToStep(1); showError(1, msg.message||'Analysis failed.'); btn.disabled=false; btn.textContent='Analyze & Suggest Stack'; },
+    error: msg => { goToStep(1); showError(1, typeof msg==='string'?msg:(msg.message||msg.detail||'Analysis failed.')); btn.disabled=false; btn.textContent='Analyze & Suggest Stack'; },
   });
 
   btn.disabled=false; btn.textContent='Analyze & Suggest Stack';
