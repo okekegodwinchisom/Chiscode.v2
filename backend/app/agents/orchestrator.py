@@ -123,13 +123,16 @@ async def node_analyze(state: ProjectState) -> ProjectState:
         })
         spec = result["spec"]
 
-        # Force a small delay to ensure connection is ready
-        await asyncio.sleep(0.5)
-        await _push(state, "stack_suggestion",
-                    options=stacks["options"],
-                    message="Pick your tech stack to continue",
-                    project_id=state["project_id"])
-
+        #debug
+        logger.info("="*60)
+        logger.info("🔍 PREPARING TO CALL STACK_ADVISOR")
+        logger.info(f"Project ID: {state['project_id']}")
+        logger.info(f"Prompt: {state['prompt'][:100]}...")
+        logger.info(f"App type from spec: {spec.get('app_type', 'NOT SET')}")
+        logger.info(f"Complexity from spec: {spec.get('complexity', 'NOT SET')}")
+        logger.info(f"Features from spec: {spec.get('features', [])}")
+        logger.info("="*60)
+        
         # Suggest stacks
         await _push(state, "log", message="🧠 Evaluating best tech stacks...")
         stacks = await _call_tool("stack_advisor", {
