@@ -516,12 +516,14 @@ async function confirmStack() {
   let stackPayload;
   if (_useCustomStack) {
     stackPayload = {
-      custom:   true,
-      frontend: document.getElementById('cs-frontend').value.trim(),
-      backend:  document.getElementById('cs-backend').value.trim(),
-      database: document.getElementById('cs-database').value.trim(),
-      extras:   document.getElementById('cs-extras').value.trim().split(',').map(s=>s.trim()).filter(Boolean),
-    };
+  option_id: 'custom',
+  custom_stack: {
+    frontend: document.getElementById('cs-frontend').value.trim(),
+    backend:  document.getElementById('cs-backend').value.trim(),
+    database: document.getElementById('cs-database').value.trim(),
+    extras:   document.getElementById('cs-extras').value.trim().split(',').map(s=>s.trim()).filter(Boolean),
+  },
+};
   } else {
     if (!_selectedStackId) {
       showError(2, 'Please select a stack first.');
