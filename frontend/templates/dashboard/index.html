@@ -752,7 +752,7 @@ async function loadProjects() {
     </div>`;
   }).join('');
 }
-
+  
 // ── Load user & update GitHub sidebar item ────────────────────
 async function loadUser() {
   const res = await apiFetch('/users/me');
@@ -761,4 +761,19 @@ async function loadUser() {
   const label = document.getElementById('sidebar-github-label');
   const link  = document.getElementById('sidebar-github-link');
   if (user.github_username) {
-    label.textContent = '@' + us
+    label.textContent = '@' + user.github_username;
+    link.href   = 'https://github.com/' + user.github_username;
+    link.target = '_blank';
+  }
+}
+
+document.getElementById('logout-btn').addEventListener('htmx:afterRequest', () => {
+  window.location.href = '/login';
+});
+
+// ── Boot ──────────────────────────────────────────────────────
+loadUsage();
+loadProjects();
+loadUser();
+</script>
+{% endblock %}
