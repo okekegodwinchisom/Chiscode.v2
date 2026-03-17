@@ -113,7 +113,7 @@ class ProjectVersion(BaseModel):
 # ── Request Schemas ────────────────────────────────────────────
 
 class GenerateProjectRequest(BaseModel):
-    prompt:          str            = Field(min_length=10, max_length=5000)
+    prompt:          str            = Field(min_length=3, max_length=5000)
     preferred_stack: Optional[TechStack] = None
     project_name:    Optional[str]  = None
 
@@ -124,7 +124,7 @@ class SelectStackRequest(BaseModel):
 
 
 class IterateProjectRequest(BaseModel):
-    prompt: str = Field(min_length=5, max_length=3000)
+    prompt: str = Field(min_length=3, max_length=3000)
 
 
 class ConfirmProjectRequest(BaseModel):
