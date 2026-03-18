@@ -136,11 +136,21 @@ async def node_analyze(state: ProjectState) -> ProjectState:
         state["stack_options"] = stacks["options"]
         state["status"]        = "awaiting_stack_selection"
 
+        # Send once only, with correct key name
         await _push(state, "stack_suggestion",
-                    options=stacks["options"],
+                    stacks=stacks["options"],          # ← was options=
                     message="Pick your tech stack to continue",
                     project_id=state["project_id"])
+        logger.info("✅ stack_suggestion event sent")
 
+        await _call_tool("project_write", {
+            "project_id": state["project_id"],
+            "fields": {
+                "spec":          spec,
+                "stack_options": stacks["options"],
+                "status":        "awaiting_stack_selection",
+            },
+        })
     except Exception as exc:
         state["error"]  = str(exc)
         state["status"] = "failed"
