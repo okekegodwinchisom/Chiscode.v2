@@ -123,39 +123,51 @@ class GitHubService:
                 return None
             raise
 
-    async def _wait_for_git_db(self, owner: str, repo: str) -> None:
+    async def _wait_for_git_db(self, owner: str, repo: str) -> str | None:
         """
-        Poll until GitHub's Git database is ready to accept blob/tree/commit calls.
-        The repo API returns 200 before the Git layer is initialized — we must
-        poll /git/refs which returns 409 while unready, 404 when empty-but-ready.
+        Poll until GitHub's Git database is ready by attempting a test blob.
+        More reliable than polling /git/refs which can stay at 409 for a long time.
+
+        Returns the test blob SHA if created (can be reused in push_files),
+        or None if the DB was ready but no blob was needed.
+
+        Retries up to 20 times with 3s delay = 60 seconds max.
         """
-        for attempt in range(15):
-            await asyncio.sleep(2)
+        for attempt in range(20):
+            await asyncio.sleep(3)
             try:
                 async with httpx.AsyncClient(timeout=10) as client:
-                    r = await client.get(
-                        f"{GITHUB_API}/repos/{owner}/{repo}/git/refs",
+                    r = await client.post(
+                        f"{GITHUB_API}/repos/{owner}/{repo}/git/blobs",
                         headers=self._headers,
+                        json={"content": "chiscode-ready", "encoding": "utf-8"},
                     )
-                # 200 = refs exist (auto_init repos)
-                # 404 = empty repo but Git DB is ready to accept pushes
-                # 409 = Git DB still initializing — keep waiting
-                if r.status_code in (200, 404):
+                if r.status_code in (200, 201):
+                    blob_sha = r.json().get("sha")
                     logger.info(
                         "Git database ready",
                         owner=owner, repo=repo, attempts=attempt + 1,
                     )
-                    return
-                logger.info(
-                    "Git database not ready yet",
-                    owner=owner, repo=repo,
-                    attempt=attempt + 1, status=r.status_code,
+                    return blob_sha
+                if r.status_code == 409:
+                    logger.info(
+                        "Git DB not ready yet",
+                        owner=owner, repo=repo, attempt=attempt + 1,
+                    )
+                    continue
+                # Unexpected status — stop waiting
+                raise GitHubError(
+                    f"Unexpected status while waiting for Git DB: "
+                    f"{r.status_code}: {r.text}",
+                    r.status_code,
                 )
+            except GitHubError:
+                raise
             except Exception as e:
                 logger.warning(f"Git DB poll attempt {attempt + 1} failed: {e}")
 
         raise GitHubError(
-            f"Git database for {owner}/{repo} did not become ready after 30 seconds"
+            f"Git database for {owner}/{repo} did not become ready after 60 seconds"
         )
 
     async def push_files(
@@ -165,10 +177,14 @@ class GitHubService:
         file_tree:      dict[str, str],
         commit_message: str,
         branch:         str = "main",
+        _ready_blob_sha: str | None = None,
     ) -> str:
         """
         Push multiple files to a repo in a single commit using the Git Trees API.
         Returns the new commit SHA. Works on both empty and non-empty repos.
+
+        _ready_blob_sha: optional SHA from _wait_for_git_db test blob (ignored,
+        just confirms the DB was already verified ready before this call).
         """
         # 1. Get current branch tip (None for brand-new empty repo)
         base_sha = await self.get_branch_sha(owner, repo, branch)
@@ -284,7 +300,9 @@ class GitHubService:
         owner    = repo_data["owner"]["login"]
         repo_url = repo_data["html_url"]
 
-        # Wait until GitHub's Git database is ready before pushing
+        # Wait until GitHub's Git database is ready before pushing.
+        # _wait_for_git_db probes by creating a test blob — once that
+        # succeeds the full push_files call is safe to proceed.
         await self._wait_for_git_db(owner, repo_name)
 
         commit_sha = await self.push_files(
