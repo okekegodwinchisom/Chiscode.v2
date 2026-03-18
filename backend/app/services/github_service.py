@@ -242,23 +242,25 @@ class GitHubService:
         owner    = repo_data["owner"]["login"]
         repo_url = repo_data["html_url"]
 
-        # Poll until GitHub finishes initializing the repo
-        for attempt in range(10):
-            await asyncio.sleep(3)
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    r = await client.get(
-                        f"{GITHUB_API}/repos/{owner}/{repo_name}",
-                        headers=self._headers,
-                    )
-                if r.status_code == 200:
-                    break
-                logger.info(f"Repo not ready yet (attempt {attempt+1}), status={r.status_code}")
-            except Exception:
-                pass
-        else:
-            raise GitHubError("Repo did not become ready after 30 seconds")
-
+        # Poll until the Git database is ready (not just the repo API)
+            for attempt in range(15):
+                await asyncio.sleep(2)
+                try:
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        r = await client.get(
+                            f"{GITHUB_API}/repos/{owner}/{repo_name}/git/refs",
+                            headers=self._headers,
+                        )
+                    # 200 = has refs (auto_init), 404 = empty but ready, 409 = not ready yet
+                    if r.status_code in (200, 404):
+                        logger.info(f"Git database ready after {attempt+1} attempts")
+                        break
+                    logger.info(f"Git database not ready (attempt {attempt+1}), status={r.status_code}: {r.text[:100]}")
+                except Exception as e:
+                    logger.warning(f"Poll attempt {attempt+1} failed: {e}")
+            else:
+                raise GitHubError("Git database did not become ready after 30 seconds")
+        
         commit_sha = await self.push_files(
             owner=owner,
             repo=repo_name,
