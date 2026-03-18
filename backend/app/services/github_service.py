@@ -245,6 +245,10 @@ class GitHubService:
         owner     = repo_data["owner"]["login"]
         repo_url  = repo_data["html_url"]
 
+        #__await GitHub to finish__
+        import asyncio
+        await asyncio.sleep(2)
+        
         commit_sha = await self.push_files(
             owner=owner,
             repo=repo_name,
