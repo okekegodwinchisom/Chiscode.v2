@@ -224,52 +224,50 @@ class GitHubService:
     # ── Full Flows ────────────────────────────────────────────
 
     async def create_repo_and_push(
-    self,
-    repo_name:      str,
-    description:    str,
-    file_tree:      dict[str, str],
-    commit_message: str,
-    private:        bool = False,
-) -> dict:
-    import asyncio
+        self,
+        repo_name:      str,
+        description:    str,
+        file_tree:      dict[str, str],
+        commit_message: str,
+        private:        bool = False,
+    ) -> dict:
+        import asyncio
 
-    repo_data = await self.create_repo(
-        name=repo_name,
-        description=description,
-        private=private,
-        auto_init=False,
-    )
-    owner    = repo_data["owner"]["login"]
-    repo_url = repo_data["html_url"]
+        repo_data = await self.create_repo(
+            name=repo_name,
+            description=description,
+            private=private,
+            auto_init=False,
+        )
+        owner    = repo_data["owner"]["login"]
+        repo_url = repo_data["html_url"]
 
-    # ── Wait until GitHub finishes initializing the repo ─────
-    # Poll the repo endpoint until it stops returning 409
-    max_attempts = 10
-    for attempt in range(max_attempts):
-        await asyncio.sleep(3)
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(
-                    f"{GITHUB_API}/repos/{owner}/{repo_name}",
-                    headers=self._headers,
-                )
-            if r.status_code == 200:
-                break  # repo is ready
-            logger.info(f"Repo not ready yet (attempt {attempt+1}), status={r.status_code}")
-        except Exception:
-            pass
-    else:
-        raise GitHubError("Repo did not become ready after 30 seconds")
+        # Poll until GitHub finishes initializing the repo
+        for attempt in range(10):
+            await asyncio.sleep(3)
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get(
+                        f"{GITHUB_API}/repos/{owner}/{repo_name}",
+                        headers=self._headers,
+                    )
+                if r.status_code == 200:
+                    break
+                logger.info(f"Repo not ready yet (attempt {attempt+1}), status={r.status_code}")
+            except Exception:
+                pass
+        else:
+            raise GitHubError("Repo did not become ready after 30 seconds")
 
-    commit_sha = await self.push_files(
-        owner=owner,
-        repo=repo_name,
-        file_tree=file_tree,
-        commit_message=commit_message,
-        branch="main",
-    )
+        commit_sha = await self.push_files(
+            owner=owner,
+            repo=repo_name,
+            file_tree=file_tree,
+            commit_message=commit_message,
+            branch="main",
+        )
 
-    return {"repo_url": repo_url, "commit_sha": commit_sha, "owner": owner}
+        return {"repo_url": repo_url, "commit_sha": commit_sha, "owner": owner}
     
     async def push_iteration_pr(
         self,
