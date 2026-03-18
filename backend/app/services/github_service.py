@@ -295,7 +295,7 @@ class GitHubService:
             name=repo_name,
             description=description,
             private=private,
-            auto_init=False,
+            auto_init=True,
         )
         owner    = repo_data["owner"]["login"]
         repo_url = repo_data["html_url"]
@@ -303,7 +303,7 @@ class GitHubService:
         # Wait until GitHub's Git database is ready before pushing.
         # _wait_for_git_db probes by creating a test blob — once that
         # succeeds the full push_files call is safe to proceed.
-        await self._wait_for_git_db(owner, repo_name)
+        await asyncio.sleep(3)
 
         commit_sha = await self.push_files(
             owner=owner,
