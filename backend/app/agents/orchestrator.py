@@ -136,23 +136,6 @@ async def node_analyze(state: ProjectState) -> ProjectState:
         state["stack_options"] = stacks["options"]
         state["status"]        = "awaiting_stack_selection"
 
-        # In your node_analyze function, after getting stacks:
-        logger.info(f"📤 Sending stack_suggestion with {len(stacks['options'])} options")
-        await _push(state, "stack_suggestion",
-                    options=stacks["options"],
-                     message="Pick your tech stack to continue",
-                     project_id=state["project_id"])
-        logger.info("✅ stack_suggestion event sent")
-
-        await _call_tool("project_write", {
-            "project_id": state["project_id"],
-            "fields": {
-                "spec":          spec,
-                "stack_options": stacks["options"],
-                "status":        "awaiting_stack_selection",
-            },
-        })
-
         await _push(state, "stack_suggestion",
                     options=stacks["options"],
                     message="Pick your tech stack to continue",
