@@ -253,6 +253,11 @@ def create_app() -> FastAPI:
         async def pricing_page(request: Request):
             return templates.TemplateResponse("pricing.html", {"request": request})
 
+        @app.get("/api_keys", response_class=HTMLResponse, include_in_schema=False)
+        async def api_keys_page(request: Request):
+            return templates.TemplateResponse("api_keys.html", {"request": request})
+            
+
         @app.get("/favicon.ico", response_class=HTMLResponse, include_in_schema=False)
         async def favicon():
             return HTMLResponse("")  # Or serve an actual favicon
