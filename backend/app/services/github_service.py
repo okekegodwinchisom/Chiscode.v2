@@ -117,7 +117,7 @@ class GitHubService:
             data = await self._get(f"/repos/{owner}/{repo}/git/ref/heads/{branch}")
             return data["object"]["sha"]
         except GitHubError as e:
-            if e.status_code == 404:
+            if e.status_code in (404, 409):  # 404 = no branch, 409 = repo still initializing
                 return None
             raise
 
