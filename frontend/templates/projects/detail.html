@@ -811,6 +811,76 @@ document.addEventListener('keydown', e=>{
   }
 });
 
+<script>
+  const PROJECT_ID = "{{ project.id }}";
+
+  function openCommitModal() {
+    document.getElementById("commit-modal").classList.remove("hidden");
+    checkGitHubStatus();
+  }
+
+  function closeCommitModal(e) {
+    if (!e || e.target === document.getElementById("commit-modal")) {
+      document.getElementById("commit-modal").classList.add("hidden");
+      document.getElementById("commit-feedback").textContent = "";
+    }
+  }
+
+  async function checkGitHubStatus() {
+    const statusEl = document.getElementById("repo-status");
+    try {
+      const res = await fetch(`/projects/${PROJECT_ID}/github-status`);
+      const data = await res.json();
+      if (data.connected) {
+        statusEl.innerHTML = `
+          <span class="text-green-400">✓ Connected:</span> 
+          <span class="text-gray-300">${data.repo}</span>`;
+      } else {
+        statusEl.innerHTML = `
+          <span class="text-yellow-400">⚠ No repo linked.</span>
+          <a href="/settings/github" class="text-cyan-400 underline ml-1">
+            Connect GitHub →
+          </a>`;
+      }
+    } catch {
+      statusEl.innerHTML = `<span class="text-red-400">Could not check GitHub status</span>`;
+    }
+  }
+
+  async function submitCommit() {
+    const message = document.getElementById("commit-message").value.trim();
+    const branch  = document.getElementById("commit-branch").value.trim() || "main";
+    const feedback = document.getElementById("commit-feedback");
+
+    if (!message) {
+      feedback.innerHTML = `<span class="text-red-400">Commit message is required</span>`;
+      return;
+    }
+
+    feedback.innerHTML = `<span class="text-cyan-400">Pushing...</span>`;
+
+    try {
+      const res = await fetch(`/projects/${PROJECT_ID}/github-commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, branch })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        feedback.innerHTML = `
+          <span class="text-green-400">✓ Committed!</span>
+          <a href="${data.commit_url}" target="_blank" 
+             class="text-cyan-400 underline ml-1">View on GitHub →</a>`;
+      } else {
+        feedback.innerHTML = `<span class="text-red-400">✗ ${data.error}</span>`;
+      }
+    } catch {
+      feedback.innerHTML = `<span class="text-red-400">✗ Request failed</span>`;
+    }
+  }
+</script>
+  
 // ── Boot ─────────────────────────────────────────────────────
 loadProject();
 </script>
