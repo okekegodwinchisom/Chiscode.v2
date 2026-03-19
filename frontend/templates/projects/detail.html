@@ -444,14 +444,29 @@ async function apiFetch(path, opts={}) {
 }
 
 // ── Load project ─────────────────────────────────────────────
+// ── Load project (optimized parallel loading) ─────────────────
 async function loadProject() {
-  const res = await apiFetch('/projects/'+projectId);
-  if (!res) return;
-  if (!res.ok) { window.location.href='/dashboard'; return; }
-  const p = await res.json();
+  // Show loading skeleton but allow user to see something
+  document.getElementById('file-list').innerHTML = 
+    '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">Loading files...</div>';
+  
+  // Run both API calls in parallel
+  const [projectRes, userRes] = await Promise.all([
+    apiFetch('/projects/' + projectId).catch(() => null),
+    apiFetch('/users/me').catch(() => null)
+  ]);
+
+  if (!projectRes || !projectRes.ok) { 
+    window.location.href = '/dashboard'; 
+    return; 
+  }
+
+  // Parse responses
+  const p = await projectRes.json();
   projectData = p;
   fileTree = p.file_tree || {};
 
+  // Update basic project info immediately
   document.getElementById('proj-name').textContent = p.name;
   document.getElementById('proj-meta').textContent =
     (p.description || p.original_prompt || '').slice(0,72) + '…';
@@ -461,9 +476,9 @@ async function loadProject() {
   badge.textContent = p.status.replace(/_/g,' ');
   badge.className = 'status-pill badge-'+(STATUS_COLOR[p.status]||'ghost');
 
-  // Info panel
+  // Info panel - update immediately
   const stack = p.stack
-    ? [p.stack.frontend,p.stack.backend,p.stack.database].filter(Boolean).join(' · ')
+    ? [p.stack.frontend, p.stack.backend, p.stack.database].filter(Boolean).join(' · ')
     : '—';
   document.getElementById('info-files').textContent   = Object.keys(fileTree).length;
   document.getElementById('info-version').textContent = 'v'+p.current_version;
@@ -471,10 +486,35 @@ async function loadProject() {
   document.getElementById('info-date').textContent    = new Date(p.created_at).toLocaleDateString();
   document.getElementById('proj-info').style.display  = 'grid';
 
-  // Deploy + Preview — show immediately when complete
+  // Render file tree (this is the expensive part)
+  renderFileTree(fileTree);
+
+  // Handle user data if available
+  if (userRes?.ok) {
+    const u = await userRes.json();
+    const pb = document.getElementById('plan-badge');
+    pb.textContent = u.plan.toUpperCase();
+    pb.className = 'badge cursor-pointer badge-'+(u.plan==='pro'||u.plan==='yearly'?'neon':u.plan==='basic'?'electric':'ghost');
+    
+    // Mark current plan in upgrade modal
+    ['free','basic','pro'].forEach(plan => {
+      const card = document.getElementById('plan-'+plan);
+      if (card) {
+        const btn = card.querySelector('button');
+        if (u.plan === plan) {
+          btn.textContent = 'Current Plan';
+          btn.disabled = true;
+        } else {
+          btn.textContent = 'Upgrade';
+          btn.disabled = false;
+        }
+      }
+    });
+  }
+
+  // Show deploy/preview if complete
   if (p.status === 'complete') {
-    const row = document.getElementById('deploy-preview-row');
-    row.style.display = 'flex';
+    document.getElementById('deploy-preview-row').style.display = 'flex';
     document.getElementById('deploy-btn').href  = `/projects/${projectId}/deploy`;
     document.getElementById('preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
   }
@@ -484,30 +524,14 @@ async function loadProject() {
     document.getElementById('github-link-row').style.display = 'block';
   }
 
-  
-  // Plan badge (clickable → upgrade)
-  const planRes = await apiFetch('/users/me');
-  if (planRes?.ok) {
-    const u = await planRes.json();
-    const pb = document.getElementById('plan-badge');
-    pb.textContent = u.plan.toUpperCase();
-    pb.className = 'badge cursor-pointer badge-'+(u.plan==='pro'||u.plan==='yearly'?'neon':u.plan==='basic'?'electric':'ghost');
-    // Mark current plan in upgrade modal
-    ['free','basic','pro'].forEach(plan => {
-      const card = document.getElementById('plan-'+plan);
-      if (card) {
-        if (u.plan===plan) {
-          card.querySelector('button').textContent = 'Current Plan';
-          card.querySelector('button').disabled = true;
-        }
-      }
-    });
-  }
-
-  renderFileTree(fileTree);
+  // Open first file if available
   const files = Object.keys(fileTree);
-  if (files.length) openFile(files[0]);
+  if (files.length) {
+    // Use requestAnimationFrame to defer heavy rendering
+    requestAnimationFrame(() => openFile(files[0]));
+  }
 }
+
 
 // ── File tree ─────────────────────────────────────────────────
 function renderFileTree(tree) {
