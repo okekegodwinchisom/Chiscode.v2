@@ -532,32 +532,44 @@ async function loadProject() {
   }
 }
 
-
-// ── File tree ─────────────────────────────────────────────────
+// ── Optimized file tree rendering ─────────────────────────────
 function renderFileTree(tree) {
+  const start = performance.now();
   const files = Object.keys(tree).sort();
-  const dirs  = {};
-  files.forEach(f => {
+  const dirs = {};
+  
+  // Use for loop instead of forEach (faster)
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
     const parts = f.split('/');
-    const dir   = parts.length > 1 ? parts.slice(0,-1).join('/') : '';
-    (dirs[dir] = dirs[dir]||[]).push(f);
-  });
+    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+    if (!dirs[dir]) dirs[dir] = [];
+    dirs[dir].push(f);
+  }
 
   let html = '';
-  Object.keys(dirs).sort().forEach(dir => {
+  const dirNames = Object.keys(dirs).sort();
+  
+  for (let d = 0; d < dirNames.length; d++) {
+    const dir = dirNames[d];
     if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
-    dirs[dir].forEach(f => {
+    
+    const dirFiles = dirs[dir];
+    for (let i = 0; i < dirFiles.length; i++) {
+      const f = dirFiles[i];
       const name = f.split('/').pop();
       html += `
         <div class="filetree__file" id="ft-${CSS.escape(f)}" onclick="openFile(${JSON.stringify(f)})">
           <span class="filetree__file-icon">${fileIcon(name)}</span>
           <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
         </div>`;
-    });
-  });
+    }
+  }
 
   document.getElementById('file-list').innerHTML = html ||
     '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
+  
+  console.log(`File tree rendered in ${performance.now() - start}ms`);
 }
 
 // ── Tabs + Code viewer ────────────────────────────────────────
