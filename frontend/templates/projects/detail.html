@@ -267,12 +267,12 @@
       <!-- Basic -->
       <div class="plan-card" id="plan-basic">
         <div class="plan-card__name" style="color:var(--electric)">Basic</div>
-        <div class="plan-card__price">$9<span>/mo</span></div>
+        <div class="plan-card__price">$25<span>/mo</span></div>
         <div style="height:1px;background:var(--border);margin:0.75rem 0"></div>
         <div class="plan-card__feature">100 generations/day</div>
         <div class="plan-card__feature">GitHub push + PRs</div>
         <div class="plan-card__feature">Project history</div>
-        <div class="plan-card__feature">Email support</div>
+        <div class="plan-card__feature">app preview</div>
         <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:rgba(0,229,255,0.1);border-color:var(--electric);color:var(--electric)" onclick="startUpgrade('basic')">Upgrade to Basic</button>
       </div>
 
@@ -282,20 +282,20 @@
           <div class="plan-card__name" style="color:var(--neon)">Pro</div>
           <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;padding:0.2rem 0.5rem;background:var(--neon);color:var(--void);border-radius:4px">Most Popular</span>
         </div>
-        <div class="plan-card__price">$29<span>/mo</span></div>
+        <div class="plan-card__price">$120<span>/mo</span></div>
         <div style="height:1px;background:rgba(57,255,20,0.2);margin:0.75rem 0"></div>
         <div class="plan-card__feature">1000 generations/day</div>
         <div class="plan-card__feature">All frameworks + MCP</div>
         <div class="plan-card__feature">Version history</div>
         <div class="plan-card__feature">Priority generation</div>
-        <div class="plan-card__feature">Slack support</div>
+        <div class="plan-card__feature">version control</div>
         <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:var(--neon);color:var(--void);border-color:var(--neon);font-weight:800" onclick="startUpgrade('pro')">Upgrade to Pro</button>
       </div>
 
     </div>
 
     <div style="padding:0 1.5rem 1.25rem;font-size:0.75rem;color:var(--muted);text-align:center">
-      All plans include a 7-day free trial. Cancel anytime. Payments via Stripe.
+      5 request a day on free plan, upgrade for more requests.
     </div>
   </div>
 </div>
@@ -389,6 +389,13 @@
 
     <div id="commit-feedback" class="text-xs mt-3 text-center"></div>
   </div>
+</div>
+
+<!-- Replace your existing loading div with this -->
+<div class="loading-state">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading project files...</div>
+  <div class="loading-progress" style="width:0%"></div>
 </div>
 
 <style>
