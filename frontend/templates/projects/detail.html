@@ -404,7 +404,8 @@ let fileTree    = {};
 let openTabs    = [];
 let activeTab   = null;
 let projectData = null;
-
+let loadingProgress = 0;
+  
 const STATUS_COLOR = {
   complete:'neon', failed:'plasma', generating:'electric', pending:'ghost',
   awaiting_confirmation:'amber', awaiting_stack_selection:'electric',
@@ -436,6 +437,14 @@ function detectLang(f) {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+function updateLoadingProgress(message, percent) {
+  loadingProgress = percent;
+  const loader = document.querySelector('.loading-text');
+  if (loader) {
+    loader.textContent = message + (percent ? ` (${percent}%)` : '');
+  }
+}  
 
 async function apiFetch(path, opts={}) {
   const res = await fetch(API+path, { credentials:'include', ...opts });
