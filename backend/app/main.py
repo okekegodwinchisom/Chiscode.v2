@@ -222,7 +222,10 @@ def create_app() -> FastAPI:
         @app.get("/projects/{project_id}", response_class=HTMLResponse, include_in_schema=False)
         async def project_detail_page(request: Request, project_id: str):
             return templates.TemplateResponse(
-                "projects/detail.html", {"request": request}
+                "projects/detail.html", {
+                    "request": request,
+                    "project": {"id": project_id},  # minimal context so template renders
+                }
             )
 
         # ── Dashboard: All projects page ─────────────────────────
