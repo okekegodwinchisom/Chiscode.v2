@@ -504,10 +504,6 @@ async function loadProject() {
     });
   }
 
-async function enhanceLoadProject() {
-  await loadProject(); // Call the existing loadProject
-  await checkGitHubStatus(); // Add GitHub status check
-}  
   renderFileTree(fileTree);
   const files = Object.keys(fileTree);
   if (files.length) openFile(files[0]);
