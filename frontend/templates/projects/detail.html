@@ -790,72 +790,66 @@ document.addEventListener('keydown', e=>{
 });
 
 
-function openCommitModal() {
-    document.getElementById("commit-modal").classList.remove("hidden");
-    checkGitHubStatus();
-}
-
-function closeCommitModal(e) {
-    if (!e || e.target === document.getElementById("commit-modal")) {
-      document.getElementById("commit-modal").classList.add("hidden");
-      document.getElementById("commit-feedback").textContent = "";
-    }
-}
-
+// Add this to your project detail page script
 async function checkGitHubStatus() {
-    const statusEl = document.getElementById("repo-status");
     try {
-      const res = await fetch(`/projects/${PROJECT_ID}/github-status`);
-      const data = await res.json();
-      if (data.connected) {
-        statusEl.innerHTML = `
-          <span class="text-green-400">✓ Connected:</span> 
-          <span class="text-gray-300">${data.repo}</span>`;
-      } else {
-        statusEl.innerHTML = `
-          <span class="text-yellow-400">⚠ No repo linked.</span>
-          <a href="/settings/github" class="text-cyan-400 underline ml-1">
-            Connect GitHub →
-          </a>`;
-      }
-    } catch {
-      statusEl.innerHTML = `<span class="text-red-400">Could not check GitHub status</span>`;
+        const response = await fetch('/users/me', {
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            const user = await response.json();
+            const statusEl = document.getElementById('github-status');
+            
+            if (user.github_username) {
+                statusEl.innerHTML = `✅ Connected as <a href="https://github.com/${user.github_username}" target="_blank">@${user.github_username}</a>`;
+                document.getElementById('commit-btn').disabled = false;
+            } else {
+                statusEl.innerHTML = '❌ GitHub not connected. <a href="/auth/github">Connect now</a>';
+                document.getElementById('commit-btn').disabled = true;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check GitHub status:', error);
     }
 }
 
-async function submitCommit() {
-    const message = document.getElementById("commit-message").value.trim();
-    const branch  = document.getElementById("commit-branch").value.trim() || "main";
-    const feedback = document.getElementById("commit-feedback");
-
-    if (!message) {
-      feedback.innerHTML = `<span class="text-red-400">Commit message is required</span>`;
-      return;
-    }
-
-
-    feedback.innerHTML = `<span class="text-cyan-400">Pushing...</span>`;
-
+async function commitToGitHub() {
+    const projectId = window.location.pathname.split('/').pop();
+    const commitMessage = document.getElementById('commit-message').value || 'Update from ChisCode';
+    const btn = document.getElementById('commit-btn');
+    
+    btn.disabled = true;
+    btn.textContent = 'Committing...';
+    
     try {
-      const res = await fetch(`/projects/${PROJECT_ID}/github-commit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, branch })
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        feedback.innerHTML = `
-          <span class="text-green-400">✓ Committed!</span>
-          <a href="${data.commit_url}" target="_blank" 
-             class="text-cyan-400 underline ml-1">View on GitHub →</a>`;
-      } else {
-        feedback.innerHTML = `<span class="text-red-400">✗ ${data.error}</span>`;
-      }
-    } catch {
-      feedback.innerHTML = `<span class="text-red-400">✗ Request failed</span>`;
+        const response = await fetch(`/projects/${projectId}/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                commit_message: commitMessage,
+                push_to_github: true
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showSuccess(`✅ Commit successful! <a href="${result.repo_url}" target="_blank">View on GitHub</a>`);
+        } else {
+            const error = await response.json();
+            showError(error.detail || 'Commit failed');
+        }
+    } catch (error) {
+        showError('Network error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Commit to GitHub';
     }
 }
+
+// Load on page load
+document.addEventListener('DOMContentLoaded', checkGitHubStatus);
 
   
 // ── Boot ─────────────────────────────────────────────────────
