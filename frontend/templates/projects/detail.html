@@ -811,22 +811,20 @@ document.addEventListener('keydown', e=>{
   }
 });
 
-<script>
-  const PROJECT_ID = "{{ project.id }}";
 
-  function openCommitModal() {
+function openCommitModal() {
     document.getElementById("commit-modal").classList.remove("hidden");
     checkGitHubStatus();
-  }
+}
 
-  function closeCommitModal(e) {
+function closeCommitModal(e) {
     if (!e || e.target === document.getElementById("commit-modal")) {
       document.getElementById("commit-modal").classList.add("hidden");
       document.getElementById("commit-feedback").textContent = "";
     }
-  }
+}
 
-  async function checkGitHubStatus() {
+async function checkGitHubStatus() {
     const statusEl = document.getElementById("repo-status");
     try {
       const res = await fetch(`/projects/${PROJECT_ID}/github-status`);
@@ -845,9 +843,9 @@ document.addEventListener('keydown', e=>{
     } catch {
       statusEl.innerHTML = `<span class="text-red-400">Could not check GitHub status</span>`;
     }
-  }
+}
 
-  async function submitCommit() {
+async function submitCommit() {
     const message = document.getElementById("commit-message").value.trim();
     const branch  = document.getElementById("commit-branch").value.trim() || "main";
     const feedback = document.getElementById("commit-feedback");
@@ -856,6 +854,7 @@ document.addEventListener('keydown', e=>{
       feedback.innerHTML = `<span class="text-red-400">Commit message is required</span>`;
       return;
     }
+
 
     feedback.innerHTML = `<span class="text-cyan-400">Pushing...</span>`;
 
@@ -878,8 +877,8 @@ document.addEventListener('keydown', e=>{
     } catch {
       feedback.innerHTML = `<span class="text-red-400">✗ Request failed</span>`;
     }
-  }
-</script>
+}
+
   
 // ── Boot ─────────────────────────────────────────────────────
 loadProject();
