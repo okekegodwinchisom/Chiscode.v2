@@ -235,40 +235,22 @@ async def node_generate(state: ProjectState) -> ProjectState:
     queue: asyncio.Queue = asyncio.Queue()
 
     async def _gen_one(filename: str) -> None:
-        try:
-            result = await _call_tool("code_generator", {
-                "filename":      filename,
-                "system_prompt": system_prompt,
-                "user_prompt":   f"Generate file: {filename}",
-            })
-            await queue.put(("ok", filename, result["content"]))
-        except Exception as exc:
-            await queue.put(("error", filename, str(exc)))
-
-    tasks = [asyncio.create_task(_gen_one(f)) for f in file_plan]
-    completed = 0
-
-    while completed < len(file_plan):
-        flag, filename, payload = await queue.get()
-        completed += 1
-
-        if flag == "ok":
-            file_tree[filename] = payload
-            await _push(state, "file", filename=filename,
-                        size=len(payload), progress=f"{completed}/{len(file_plan)}")
-            # Persist incrementally
-            await _call_tool("project_write", {
-                "project_id": state["project_id"],
-                "fields":     {"file_tree": file_tree},
-            })
-        else:
-            await _push(state, "log", message=f"❌ {filename} failed: {payload}")
-
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    state["file_tree"] = file_tree
-    return state
-
+    try:
+        result = await _call_tool("code_generator", {
+            "filename":      filename,
+            "system_prompt": system_prompt,
+            "user_prompt": (
+                f"Generate the file: {filename}\n\n"
+                f"This file is part of a {stack_desc} project.\n"
+                f"Full project structure:\n"
+                + "\n".join(f"  - {f}" for f in file_plan)
+                + f"\n\nGenerate ONLY the content for {filename}. "
+                f"Ensure imports and references match the other files in this project."
+            ),
+        })
+        await queue.put(("ok", filename, result["content"]))
+    except Exception as exc:
+        await queue.put(("error", filename, str(exc)))
 
 # ═══════════════════════════════════════════════════════════════
 # Node: quality_check
