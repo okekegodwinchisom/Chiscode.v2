@@ -82,6 +82,8 @@
   .plan-card__price span { font-size: 0.8rem; color: var(--ghost); font-weight: 400; }
   .plan-card__feature { font-size: 0.78rem; color: var(--ghost); padding: 0.2rem 0; }
   .plan-card__feature::before { content: '✓ '; color: var(--neon); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -147,37 +149,38 @@
         Iterate Project
       </button>
 
-      <!-- Deploy + Preview buttons (shown when status=complete) -->
+      <!-- Deploy + Preview (shown when complete) -->
       <div id="deploy-preview-row" style="display:none;flex-direction:column;gap:.4rem">
-        <a id="deploy-btn" href="#" class="btn btn-primary btn-sm"
-           style="justify-content:center;width:100%;text-decoration:none">
+        <a id="deploy-btn" href="#" class="btn btn-primary btn-sm" style="justify-content:center;width:100%;text-decoration:none">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Deploy App
         </a>
-        <a id="preview-btn" href="#" class="btn btn-ghost btn-sm"
-           style="justify-content:center;width:100%;text-decoration:none">
+        <a id="preview-btn" href="#" class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;text-decoration:none">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           Preview
         </a>
       </div>
+
       <div class="action-row">
         <button class="btn btn-ghost btn-sm" onclick="exportZip()" id="export-btn" title="Download all files as .zip">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export .zip
         </button>
         <button class="btn btn-ghost btn-sm" onclick="copyCurrentFile()" title="Copy active file to clipboard">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Copy
         </button>
       </div>
 
-      <!-- github commit -->
-      <button class="btn btn-primary btn-sm" style="justify-content:center;width:100%" onclick="openCommitModal()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.35rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Commit to github
-      </button>
-      
-      <!-- GitHub link (shown when available) -->
+      <!-- Push to GitHub (complete but not yet pushed) -->
+      <div id="github-push-row" style="display:none">
+        <button onclick="openPushModal()" class="btn btn-sm" style="width:100%;justify-content:center;background:rgba(99,102,241,0.1);border-color:var(--electric);color:var(--electric)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          Push to GitHub
+        </button>
+      </div>
+
+      <!-- Open on GitHub (already pushed) -->
       <div id="github-link-row" style="display:none">
         <a id="github-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;text-decoration:none">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -185,13 +188,13 @@
         </a>
       </div>
 
-      <!-- Export progress indicator -->
+      <!-- Export progress -->
       <div class="export-progress" id="export-progress">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--electric)" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         <span id="export-progress-text">Building zip…</span>
       </div>
 
-      <!-- Delete section -->
+      <!-- Delete -->
       <div style="border-top:1px solid var(--border);padding-top:0.5rem;margin-top:0.1rem">
         <button class="btn btn-sm" style="width:100%;justify-content:center;color:var(--plasma);border-color:rgba(255,61,107,0.25);background:rgba(255,61,107,0.06)" onclick="toggleDeleteConfirm()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -210,11 +213,9 @@
     </div>
   </div>
 
-
   <!-- ── Code Viewer ── -->
   <div class="codeview">
     <div class="codeview__tabs" id="tabs-bar"></div>
-
     <div class="codeview__toolbar" id="toolbar" style="display:none">
       <span class="codeview__filepath" id="current-filepath"></span>
       <div class="codeview__toolbar-actions">
@@ -228,12 +229,39 @@
         </button>
       </div>
     </div>
-
     <div class="codeview__body" id="code-body">
       <div class="codeview__empty">
         <div class="codeview__empty-icon">📂</div>
         <p style="font-size:0.9rem;color:var(--ghost)">Select a file from the tree</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PUSH TO GITHUB MODAL
+     ═══════════════════════════════════════════ -->
+<div id="push-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:1.5rem" onclick="if(event.target===this)closePushModal()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:480px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border)">
+      <h2 style="font-family:var(--font-display);font-size:1.1rem;font-weight:800">Push to GitHub</h2>
+      <button onclick="closePushModal()" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.5rem;line-height:1">×</button>
+    </div>
+    <div style="padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem">
+      <div id="push-github-warning" style="display:none;background:rgba(255,179,0,.08);border:1px solid var(--amber);border-radius:8px;padding:.75rem 1rem;font-size:.8rem;color:var(--amber)">
+        ⚠ No GitHub account connected. <a href="/api/v1/auth/github" style="color:var(--electric)">Connect GitHub →</a>
+      </div>
+      <div>
+        <label style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:.4rem">Commit Message</label>
+        <input id="push-commit-msg" type="text" class="input" placeholder="Initial commit — generated by ChisCode" style="width:100%;box-sizing:border-box" />
+      </div>
+      <div id="push-log" style="display:none;background:var(--deep);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;font-family:var(--font-code);font-size:.75rem;color:var(--ghost);max-height:160px;overflow-y:auto;white-space:pre-wrap"></div>
+      <div id="push-error" style="display:none;background:rgba(255,61,107,.08);border:1px solid rgba(255,61,107,.3);border-radius:8px;padding:.65rem 1rem;font-size:.8rem;color:var(--plasma)"></div>
+      <div id="push-success" style="display:none;background:rgba(57,255,20,.06);border:1px solid var(--neon);border-radius:8px;padding:.75rem 1rem;font-size:.82rem;color:var(--neon)"></div>
+      <button id="push-btn" onclick="doPush()" class="btn btn-primary" style="justify-content:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.4rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        Push to GitHub
+      </button>
     </div>
   </div>
 </div>
@@ -250,10 +278,7 @@
       </div>
       <button onclick="closeUpgradeModal()" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.5rem;line-height:1;padding:0.2rem">×</button>
     </div>
-
     <div style="padding:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
-
-      <!-- Free -->
       <div class="plan-card" id="plan-free">
         <div class="plan-card__name" style="color:var(--ghost)">Free</div>
         <div class="plan-card__price">$0<span>/mo</span></div>
@@ -263,39 +288,33 @@
         <div class="plan-card__feature">Community support</div>
         <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:1rem" disabled>Current Plan</button>
       </div>
-
-      <!-- Basic -->
       <div class="plan-card" id="plan-basic">
         <div class="plan-card__name" style="color:var(--electric)">Basic</div>
-        <div class="plan-card__price">$25<span>/mo</span></div>
+        <div class="plan-card__price">$9<span>/mo</span></div>
         <div style="height:1px;background:var(--border);margin:0.75rem 0"></div>
         <div class="plan-card__feature">100 generations/day</div>
         <div class="plan-card__feature">GitHub push + PRs</div>
         <div class="plan-card__feature">Project history</div>
-        <div class="plan-card__feature">app preview</div>
+        <div class="plan-card__feature">Email support</div>
         <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:rgba(0,229,255,0.1);border-color:var(--electric);color:var(--electric)" onclick="startUpgrade('basic')">Upgrade to Basic</button>
       </div>
-
-      <!-- Pro (featured) -->
       <div class="plan-card featured" id="plan-pro">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.1rem">
           <div class="plan-card__name" style="color:var(--neon)">Pro</div>
           <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;padding:0.2rem 0.5rem;background:var(--neon);color:var(--void);border-radius:4px">Most Popular</span>
         </div>
-        <div class="plan-card__price">$120<span>/mo</span></div>
+        <div class="plan-card__price">$29<span>/mo</span></div>
         <div style="height:1px;background:rgba(57,255,20,0.2);margin:0.75rem 0"></div>
         <div class="plan-card__feature">1000 generations/day</div>
         <div class="plan-card__feature">All frameworks + MCP</div>
         <div class="plan-card__feature">Version history</div>
         <div class="plan-card__feature">Priority generation</div>
-        <div class="plan-card__feature">version control</div>
+        <div class="plan-card__feature">Slack support</div>
         <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:var(--neon);color:var(--void);border-color:var(--neon);font-weight:800" onclick="startUpgrade('pro')">Upgrade to Pro</button>
       </div>
-
     </div>
-
     <div style="padding:0 1.5rem 1.25rem;font-size:0.75rem;color:var(--muted);text-align:center">
-      5 request a day on free plan, upgrade for more requests.
+      All plans include a 7-day free trial. Cancel anytime. Payments via Stripe.
     </div>
   </div>
 </div>
@@ -338,69 +357,6 @@
   </div>
 </div>
 
-<!-- GitHub Commit Modal -->
-<div id="commit-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center 
-     z-50 hidden" onclick="closeCommitModal(event)">
-  <div class="bg-[#0d1117] border border-cyan-500/30 rounded-lg p-6 w-80 font-mono">
-    <h3 class="text-cyan-400 text-sm font-bold mb-4 uppercase tracking-widest">
-      Commit to GitHub
-    </h3>
-
-    <!-- Repo Status -->
-    <div id="repo-status" class="text-xs text-gray-400 mb-3">
-      Checking GitHub connection...
-    </div>
-
-    <!-- Commit Message Input -->
-    <input
-      id="commit-message"
-      type="text"
-      placeholder="feat: update project files"
-      class="w-full bg-[#161b22] border border-gray-600 text-gray-200 text-xs px-3 py-2 
-             rounded mb-3 focus:outline-none focus:border-cyan-500"
-    />
-
-    <!-- Branch Input -->
-    <input
-      id="commit-branch"
-      type="text"
-      value="main"
-      placeholder="Branch (default: main)"
-      class="w-full bg-[#161b22] border border-gray-600 text-gray-200 text-xs px-3 py-2 
-             rounded mb-4 focus:outline-none focus:border-cyan-500"
-    />
-
-    <div class="flex gap-2">
-      <button
-        onclick="submitCommit()"
-        class="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold 
-               py-2 rounded transition"
-      >
-        PUSH COMMIT
-      </button>
-      <button
-        onclick="closeCommitModal()"
-        class="flex-1 border border-gray-600 text-gray-400 hover:text-white 
-               text-xs py-2 rounded transition"
-      >
-        CANCEL
-      </button>
-    </div>
-
-    <div id="commit-feedback" class="text-xs mt-3 text-center"></div>
-  </div>
-</div>
-
-<!-- Replace your existing loading div with this -->
-<div class="loading-state">
-  <div class="spinner"></div>
-  <div class="loading-text">Loading project files...</div>
-  <div class="loading-progress" style="width:0%"></div>
-</div>
-
-<style>
-@keyframes spin { to { transform: rotate(360deg); } }
-</style>
 {% endblock %}
 
 {% block scripts %}
@@ -411,8 +367,7 @@ let fileTree    = {};
 let openTabs    = [];
 let activeTab   = null;
 let projectData = null;
-let loadingProgress = 0;
-  
+
 const STATUS_COLOR = {
   complete:'neon', failed:'plasma', generating:'electric', pending:'ghost',
   awaiting_confirmation:'amber', awaiting_stack_selection:'electric',
@@ -442,16 +397,15 @@ function detectLang(f) {
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function updateLoadingProgress(message, percent) {
-  loadingProgress = percent;
-  const loader = document.querySelector('.loading-text');
-  if (loader) {
-    loader.textContent = message + (percent ? ` (${percent}%)` : '');
-  }
-}  
+function safeMsg(v) {
+  if (!v) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return v.message || v.detail || JSON.stringify(v);
+  return String(v);
+}
 
 async function apiFetch(path, opts={}) {
   const res = await fetch(API+path, { credentials:'include', ...opts });
@@ -459,41 +413,25 @@ async function apiFetch(path, opts={}) {
   return res;
 }
 
-// ── Load project (optimized parallel loading) ─────────────────
+// ── Load project ─────────────────────────────────────────────
 async function loadProject() {
-  // Show loading skeleton but allow user to see something
-  document.getElementById('file-list').innerHTML = 
-    '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">Loading files...</div>';
-  
-  // Run both API calls in parallel
-  const [projectRes, userRes] = await Promise.all([
-    apiFetch('/projects/' + projectId).catch(() => null),
-    apiFetch('/users/me').catch(() => null)
-  ]);
-
-  if (!projectRes || !projectRes.ok) { 
-    window.location.href = '/dashboard'; 
-    return; 
-  }
-
-  // Parse responses
-  const p = await projectRes.json();
+  const res = await apiFetch('/projects/'+projectId);
+  if (!res) return;
+  if (!res.ok) { window.location.href='/dashboard'; return; }
+  const p = await res.json();
   projectData = p;
   fileTree = p.file_tree || {};
 
-  // Update basic project info immediately
   document.getElementById('proj-name').textContent = p.name;
   document.getElementById('proj-meta').textContent =
     (p.description || p.original_prompt || '').slice(0,72) + '…';
 
-  // Status badge
   const badge = document.getElementById('proj-status-badge');
   badge.textContent = p.status.replace(/_/g,' ');
   badge.className = 'status-pill badge-'+(STATUS_COLOR[p.status]||'ghost');
 
-  // Info panel - update immediately
   const stack = p.stack
-    ? [p.stack.frontend, p.stack.backend, p.stack.database].filter(Boolean).join(' · ')
+    ? [p.stack.frontend,p.stack.backend,p.stack.database].filter(Boolean).join(' · ')
     : '—';
   document.getElementById('info-files').textContent   = Object.keys(fileTree).length;
   document.getElementById('info-version').textContent = 'v'+p.current_version;
@@ -501,90 +439,70 @@ async function loadProject() {
   document.getElementById('info-date').textContent    = new Date(p.created_at).toLocaleDateString();
   document.getElementById('proj-info').style.display  = 'grid';
 
-  // Render file tree (this is the expensive part)
-  renderFileTree(fileTree);
-
-  // Handle user data if available
-  if (userRes?.ok) {
-    const u = await userRes.json();
-    const pb = document.getElementById('plan-badge');
-    pb.textContent = u.plan.toUpperCase();
-    pb.className = 'badge cursor-pointer badge-'+(u.plan==='pro'||u.plan==='yearly'?'neon':u.plan==='basic'?'electric':'ghost');
-    
-    // Mark current plan in upgrade modal
-    ['free','basic','pro'].forEach(plan => {
-      const card = document.getElementById('plan-'+plan);
-      if (card) {
-        const btn = card.querySelector('button');
-        if (u.plan === plan) {
-          btn.textContent = 'Current Plan';
-          btn.disabled = true;
-        } else {
-          btn.textContent = 'Upgrade';
-          btn.disabled = false;
-        }
-      }
-    });
-  }
-
-  // Show deploy/preview if complete
   if (p.status === 'complete') {
-    document.getElementById('deploy-preview-row').style.display = 'flex';
+    const row = document.getElementById('deploy-preview-row');
+    row.style.display = 'flex';
     document.getElementById('deploy-btn').href  = `/projects/${projectId}/deploy`;
     document.getElementById('preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
   }
 
+  // GitHub button: push if not committed, link if already pushed
+  const pushRow = document.getElementById('github-push-row');
+  const ghRow   = document.getElementById('github-link-row');
+  const ghLink  = document.getElementById('github-link');
+
   if (p.github_repo_url) {
-    document.getElementById('github-link').href = p.github_repo_url;
-    document.getElementById('github-link-row').style.display = 'block';
+    ghLink.href = p.github_repo_url;
+    ghRow.style.display   = 'block';
+    pushRow.style.display = 'none';
+  } else if (p.status === 'complete') {
+    pushRow.style.display = 'block';
+    ghRow.style.display   = 'none';
   }
 
-  // Open first file if available
-  const files = Object.keys(fileTree);
-  if (files.length) {
-    // Use requestAnimationFrame to defer heavy rendering
-    requestAnimationFrame(() => openFile(files[0]));
+  const planRes = await apiFetch('/users/me');
+  if (planRes?.ok) {
+    const u = await planRes.json();
+    window._currentUser = u;
+    const pb = document.getElementById('plan-badge');
+    pb.textContent = u.plan.toUpperCase();
+    pb.className = 'badge cursor-pointer badge-'+(u.plan==='pro'||u.plan==='yearly'?'neon':u.plan==='basic'?'electric':'ghost');
+    ['free','basic','pro'].forEach(plan => {
+      const card = document.getElementById('plan-'+plan);
+      if (card && u.plan===plan) {
+        const btn = card.querySelector('button');
+        if (btn) { btn.textContent='Current Plan'; btn.disabled=true; }
+      }
+    });
   }
+
+  renderFileTree(fileTree);
+  const files = Object.keys(fileTree);
+  if (files.length) openFile(files[0]);
 }
 
-// ── Optimized file tree rendering ─────────────────────────────
+// ── File tree ─────────────────────────────────────────────────
 function renderFileTree(tree) {
-  const start = performance.now();
   const files = Object.keys(tree).sort();
-  const dirs = {};
-  
-  // Use for loop instead of forEach (faster)
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i];
+  const dirs  = {};
+  files.forEach(f => {
     const parts = f.split('/');
-    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-    if (!dirs[dir]) dirs[dir] = [];
-    dirs[dir].push(f);
-  }
-
+    const dir   = parts.length > 1 ? parts.slice(0,-1).join('/') : '';
+    (dirs[dir] = dirs[dir]||[]).push(f);
+  });
   let html = '';
-  const dirNames = Object.keys(dirs).sort();
-  
-  for (let d = 0; d < dirNames.length; d++) {
-    const dir = dirNames[d];
+  Object.keys(dirs).sort().forEach(dir => {
     if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
-    
-    const dirFiles = dirs[dir];
-    for (let i = 0; i < dirFiles.length; i++) {
-      const f = dirFiles[i];
+    dirs[dir].forEach(f => {
       const name = f.split('/').pop();
-      html += `
-        <div class="filetree__file" id="ft-${CSS.escape(f)}" onclick="openFile(${JSON.stringify(f)})">
-          <span class="filetree__file-icon">${fileIcon(name)}</span>
-          <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
-        </div>`;
-    }
-  }
-
+      html += `<div class="filetree__file" id="ft-${CSS.escape(f)}" onclick="openFile(${JSON.stringify(f)})">
+        <span class="filetree__file-icon">${fileIcon(name)}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
+      </div>`;
+    });
+  });
   document.getElementById('file-list').innerHTML = html ||
     '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
-  
-  console.log(`File tree rendered in ${performance.now() - start}ms`);
 }
 
 // ── Tabs + Code viewer ────────────────────────────────────────
@@ -616,8 +534,7 @@ function closeTab(filepath, e) {
 
 function renderTabs() {
   document.getElementById('tabs-bar').innerHTML = openTabs.map(t=>`
-    <div class="codeview__tab ${t.path===activeTab?'codeview__tab--active':''}"
-         onclick="setActiveTab(${JSON.stringify(t.path)})">
+    <div class="codeview__tab ${t.path===activeTab?'codeview__tab--active':''}" onclick="setActiveTab(${JSON.stringify(t.path)})">
       <span>${fileIcon(t.label)}</span>
       <span>${escHtml(t.label)}</span>
       <span class="codeview__tab-close" onclick="closeTab(${JSON.stringify(t.path)},event)">×</span>
@@ -625,10 +542,10 @@ function renderTabs() {
 }
 
 function renderCode(filepath) {
-  const content = fileTree[filepath]||'';
+  const content  = fileTree[filepath]||'';
   document.getElementById('toolbar').style.display = 'flex';
   document.getElementById('current-filepath').textContent = filepath;
-  const lines   = content.split('\n');
+  const lines    = content.split('\n');
   const lineNums = lines.map((_,i)=>i+1).join('\n');
   document.getElementById('code-body').innerHTML = `
     <div class="line-numbers-wrapper">
@@ -674,44 +591,33 @@ function downloadFile() {
 async function exportZip() {
   const files = Object.keys(fileTree);
   if (!files.length) { if (window.showToast) showToast('No files to export','error'); return; }
-
   const btn      = document.getElementById('export-btn');
   const progress = document.getElementById('export-progress');
   const progText = document.getElementById('export-progress-text');
-  btn.disabled   = true;
+  btn.disabled = true;
   progress.classList.add('show');
   progText.textContent = 'Building zip…';
-
   try {
-    // Wait for JSZip to be available (loaded via defer)
     let attempts = 0;
     while (!window.JSZip && attempts++ < 20) await new Promise(r=>setTimeout(r,100));
     if (!window.JSZip) throw new Error('JSZip library not loaded');
-
     const zip  = new JSZip();
     const name = (projectData?.name || 'chiscode-project').replace(/[^a-zA-Z0-9_-]/g,'-');
     const root = zip.folder(name);
-
     let done = 0;
     for (const [filepath, content] of Object.entries(fileTree)) {
       root.file(filepath, content);
       done++;
       progText.textContent = `Packing ${done}/${files.length}…`;
-      await new Promise(r=>setTimeout(r,0)); // yield to UI
+      await new Promise(r=>setTimeout(r,0));
     }
-
     progText.textContent = 'Compressing…';
     const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:6} });
-    const a = Object.assign(document.createElement('a'),{
-      href: URL.createObjectURL(blob),
-      download: `${name}.zip`,
-    });
+    const a = Object.assign(document.createElement('a'),{ href:URL.createObjectURL(blob), download:`${name}.zip` });
     a.click();
     URL.revokeObjectURL(a.href);
-
     progText.textContent = `✅ ${files.length} files exported`;
     setTimeout(()=>{ progress.classList.remove('show'); progText.textContent='Building zip…'; }, 2500);
-
   } catch(err) {
     progText.textContent = '❌ Export failed';
     setTimeout(()=>{ progress.classList.remove('show'); }, 2500);
@@ -732,138 +638,114 @@ async function deleteProject() {
     window.location.href = '/dashboard';
   } else {
     const err = res ? await res.json().catch(()=>({})) : {};
-    if (window.showToast) showToast(err.detail||'Delete failed','error');
+    if (window.showToast) showToast(safeMsg(err.detail)||'Delete failed','error');
     toggleDeleteConfirm();
   }
 }
 
-// ── GitHub Integration ────────────────────────────────────────
-
-async function checkGitHubStatus() {
-  try {
-    const res = await apiFetch('/users/me');
-    if (!res) return false;
-    
-    const user = await res.json();
-    const statusEl = document.getElementById('github-status');
-    const commitBtn = document.getElementById('commit-btn');
-    
-    if (user.github_username) {
-      statusEl.innerHTML = `✅ Connected as <a href="https://github.com/${user.github_username}" target="_blank" style="color:var(--electric)">@${user.github_username}</a>`;
-      if (commitBtn) commitBtn.disabled = false;
-      return true;
-    } else {
-      statusEl.innerHTML = `❌ GitHub not connected. <a href="/api/v1/auth/github" style="color:var(--electric)">Connect now</a>`;
-      if (commitBtn) commitBtn.disabled = true;
-      return false;
-    }
-  } catch (error) {
-    console.error('GitHub status check failed:', error);
-    return false;
-  }
-}
-
-function openCommitModal() {
-  // Check GitHub status first
-  checkGitHubStatus().then(hasGitHub => {
-    if (!hasGitHub) {
-      // Show a more prominent error
-      const statusEl = document.getElementById('github-status');
-      if (statusEl) {
-        statusEl.innerHTML = `❌ Please <a href="/api/v1/auth/github" style="color:var(--electric)">connect GitHub</a> first`;
-      }
-      return;
-    }
-    document.getElementById('commit-modal').style.display = 'flex';
-    // Focus on the commit message input
-    setTimeout(() => {
-      const input = document.getElementById('commit-message');
-      if (input) input.focus();
-    }, 100);
-  });
-}
-
-function closeCommitModal() {
-  document.getElementById('commit-modal').style.display = 'none';
-  document.getElementById('commit-error').style.display = 'none';
-}
-
-async function submitCommit() {
-  const commitMessage = document.getElementById('commit-message').value.trim() || 
-                        'Update from ChisCode';
-  const btn = document.getElementById('commit-submit-btn');
-  const errorEl = document.getElementById('commit-error');
-  const progressEl = document.getElementById('commit-progress');
-  const progressText = document.getElementById('commit-progress-text');
-  
-  btn.disabled = true;
-  btn.textContent = 'Pushing...';
-  errorEl.style.display = 'none';
-  progressEl.classList.add('show');
-  progressText.textContent = 'Creating repository...';
-
-  try {
-    const res = await apiFetch('/projects/' + projectId + '/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        commit_message: commitMessage,
-        push_to_github: true
-      })
-    });
-
-    if (!res) return;
-
-    if (res.ok) {
-      const result = await res.json();
-      progressText.textContent = '✅ Push successful!';
-      
-      // Update UI with GitHub link
-      if (result.repo_url) {
-        const linkEl = document.getElementById('github-link');
-        linkEl.href = result.repo_url;
-        linkEl.textContent = result.repo_url.replace('https://', '');
-        document.getElementById('github-link-row').style.display = 'block';
-        
-        // Show success message
-        const successEl = document.getElementById('commit-success');
-        successEl.innerHTML = `✅ Successfully pushed to <a href="${result.repo_url}" target="_blank">GitHub</a>`;
-        successEl.style.display = 'block';
-      }
-      
-      setTimeout(() => {
-        closeCommitModal();
-        progressEl.classList.remove('show');
-        btn.disabled = false;
-        btn.textContent = 'Push to GitHub';
-      }, 2000);
-      
-    } else {
-      const err = await res.json().catch(() => ({}));
-      errorEl.textContent = err.detail || 'Commit failed. Please try again.';
-      errorEl.style.display = 'block';
-      progressEl.classList.remove('show');
-      btn.disabled = false;
-      btn.textContent = 'Push to GitHub';
-    }
-  } catch (error) {
-    console.error('Commit error:', error);
-    errorEl.textContent = 'Network error. Please try again.';
-    errorEl.style.display = 'block';
-    progressEl.classList.remove('show');
-    btn.disabled = false;
-    btn.textContent = 'Push to GitHub';
-  }
-}
-  
 // ── Upgrade modal ─────────────────────────────────────────────
 function openUpgradeModal()  { document.getElementById('upgrade-modal').style.display='flex'; }
 function closeUpgradeModal() { document.getElementById('upgrade-modal').style.display='none'; }
+function startUpgrade(plan)  { if (window.showToast) showToast(`${plan} plan — billing coming soon!`, 'info'); }
 
-function startUpgrade(plan) {
-  // TODO: wire to RevenueCat / Stripe when billing is set up
-  // For now redirect to a placeholder or show coming-soon
-  if (window.showToast) showToast(`${plan} plan — billing coming soon!`, 'info');
+// ── Push to GitHub modal ──────────────────────────────────────
+function openPushModal() {
+  const u    = window._currentUser || {};
+  const warn = document.getElementById('push-github-warning');
+  warn.style.display = u.github_username ? 'none' : 'block';
+  document.getElementById('push-commit-msg').value     = '';
+  document.getElementById('push-log').style.display    = 'none';
+  document.getElementById('push-log').textContent      = '';
+  document.getElementById('push-error').style.display  = 'none';
+  document.getElementById('push-success').style.display = 'none';
+  const btn = document.getElementById('push-btn');
+  btn.disabled    = false;
+  btn.textContent = 'Push to GitHub';
+  document.getElementById('push-modal').style.display = 'flex';
+}
+
+function closePushModal() {
+  document.getElementById('push-modal').style.display = 'none';
+}
+
+function addPushLog(msg) {
+  const el = document.getElementById('push-log');
+  el.style.display = 'block';
+  el.textContent  += safeMsg(msg) + '\n';
+  el.scrollTop     = el.scrollHeight;
+}
+
+async function doPush() {
+  const btn       = document.getElementById('push-btn');
+  const errEl     = document.getElementById('push-error');
+  const successEl = document.getElementById('push-success');
+  const msg       = document.getElementById('push-commit-msg').value.trim();
+
+  errEl.style.display    = 'none';
+  successEl.style.display = 'none';
+  btn.disabled    = true;
+  btn.textContent = 'Pushing…';
+
+  try {
+    const res = await apiFetch('/projects/' + projectId + '/confirm', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ commit_message: msg || null, push_to_github: true }),
+    });
+
+    if (!res) { btn.disabled=false; btn.textContent='Push to GitHub'; return; }
+
+    if (!res.ok) {
+      const err    = await res.json().catch(()=>({}));
+      const detail = Array.isArray(err.detail)
+        ? err.detail.map(e => e.msg || safeMsg(e)).join(', ')
+        : (safeMsg(err.detail) || 'Push failed.');
+      if (detail.includes('GitHub') || detail.includes('token')) {
+        sessionStorage.setItem('chiscode_after_github', window.location.pathname);
+        window.location.href = '/api/v1/auth/github'; return;
+      }
+      errEl.textContent   = detail;
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Push to GitHub'; return;
+    }
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n'); buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.event === 'log' || ev.event === 'status') addPushLog(ev.message);
+          if (ev.event === 'github_done') {
+            successEl.innerHTML    = `✅ Pushed! <a href="${escHtml(ev.repo_url)}" target="_blank" style="color:var(--electric)">${escHtml(ev.repo_url)}</a>`;
+            successEl.style.display = 'block';
+            btn.textContent = 'Done ✓';
+            const ghLink  = document.getElementById('github-link');
+            const ghRow   = document.getElementById('github-link-row');
+            const pushRow = document.getElementById('github-push-row');
+            if (ghLink)  ghLink.href           = ev.repo_url;
+            if (ghRow)   ghRow.style.display   = 'block';
+            if (pushRow) pushRow.style.display  = 'none';
+          }
+          if (ev.event === 'error') {
+            errEl.textContent   = safeMsg(ev.message) || 'Push failed.';
+            errEl.style.display = 'block';
+            btn.disabled = false; btn.textContent = 'Push to GitHub';
+          }
+        } catch {}
+      }
+    }
+  } catch(e) {
+    errEl.textContent   = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Push to GitHub';
+  }
 }
 
 // ── Iterate ──────────────────────────────────────────────────
@@ -876,44 +758,34 @@ function openIterateModal() {
 async function submitIterate() {
   const prompt  = document.getElementById('iterate-prompt').value.trim();
   if (!prompt) return;
-
   const btn     = document.getElementById('iterate-btn');
   const logEl   = document.getElementById('iterate-log');
   const logBody = document.getElementById('iterate-log-body');
   const errEl   = document.getElementById('iterate-error');
-  btn.disabled  = true;
-  btn.textContent = 'Running…';
-  logEl.style.display = 'block';
-  errEl.style.display = 'none';
+  btn.disabled  = true; btn.textContent = 'Running…';
+  logEl.style.display = 'block'; errEl.style.display = 'none';
 
   function addLog(msg, cls='') {
     const line = document.createElement('div');
     line.className = 'terminal__line'+(cls?' terminal__line--'+cls:'');
-    line.textContent = msg;
+    line.textContent = safeMsg(msg);
     logBody.insertBefore(line, logBody.lastChild);
     logBody.scrollTop = logBody.scrollHeight;
   }
 
   addLog('Starting iteration…');
-
   const res = await apiFetch('/projects/'+projectId+'/iterate', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({prompt}),
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt}),
   });
-
   if (!res || !res.ok) {
     const err = res ? await res.json().catch(()=>({})) : {};
-    errEl.textContent = err.detail||'Iterate failed — ensure project is complete and GitHub is connected.';
-    errEl.style.display='block';
-    btn.disabled=false; btn.textContent='Run Iteration'; return;
+    errEl.textContent = safeMsg(err.detail)||'Iterate failed — ensure project is complete and GitHub is connected.';
+    errEl.style.display='block'; btn.disabled=false; btn.textContent='Run Iteration'; return;
   }
 
-  // Stream SSE
   const reader  = res.body.getReader();
   const decoder = new TextDecoder();
   let   buffer  = '';
-
   while (true) {
     const {done,value} = await reader.read();
     if (done) break;
@@ -924,25 +796,22 @@ async function submitIterate() {
       try {
         const msg = JSON.parse(line.slice(6));
         if (msg.event==='log')    addLog(msg.message);
-        if (msg.event==='status') addLog('→ '+msg.message);
+        if (msg.event==='status') addLog('→ '+safeMsg(msg.message));
         if (msg.event==='file')   addLog('✅ '+msg.filename,'complete');
-        if (msg.event==='issues') msg.issues?.forEach(i=>addLog('⚠ '+i));
+        if (msg.event==='issues') (msg.issues||[]).forEach(i=>addLog('⚠ '+safeMsg(i)));
         if (msg.event==='github_done') {
           addLog('🎉 PR opened!','complete');
-          const prPanel = document.getElementById('iterate-pr-result');
           document.getElementById('iterate-pr-link').href = msg.pr_url||'#';
-          prPanel.style.display='block';
-          // Refresh file tree with updated files
+          document.getElementById('iterate-pr-result').style.display='block';
           await loadProject();
         }
         if (msg.event==='error') {
-          addLog('❌ '+msg.message,'error');
-          errEl.textContent=msg.message; errEl.style.display='block';
+          addLog('❌ '+safeMsg(msg.message),'error');
+          errEl.textContent=safeMsg(msg.message); errEl.style.display='block';
         }
       } catch {}
     }
   }
-
   btn.disabled=false; btn.textContent='Run Iteration';
 }
 
@@ -953,13 +822,13 @@ document.addEventListener('keydown', e=>{
     copyCurrentFile();
   }
   if (e.key==='Escape') {
-    ['upgrade-modal','iterate-modal'].forEach(id=>{
+    ['upgrade-modal','iterate-modal','push-modal'].forEach(id=>{
       document.getElementById(id).style.display='none';
     });
     document.getElementById('delete-confirm').classList.remove('show');
   }
 });
-    
+
 // ── Boot ─────────────────────────────────────────────────────
 loadProject();
 </script>
