@@ -481,28 +481,36 @@ async function loadProject() {
   if (files.length) openFile(files[0]);
 }
 
-// ── File tree ─────────────────────────────────────────────────
 function renderFileTree(tree) {
-  const files = Object.keys(tree).sort();
-  const dirs  = {};
-  files.forEach(f => {
-    const parts = f.split('/');
-    const dir   = parts.length > 1 ? parts.slice(0,-1).join('/') : '';
-    (dirs[dir] = dirs[dir]||[]).push(f);
-  });
-  let html = '';
-  Object.keys(dirs).sort().forEach(dir => {
-    if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
-    dirs[dir].forEach(f => {
-      const name = f.split('/').pop();
-      html += `<div class="filetree__file" id="ft-${CSS.escape(f)}" onclick="openFile(${JSON.stringify(f)})">
-        <span class="filetree__file-icon">${fileIcon(name)}</span>
-        <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
-      </div>`;
+    const files = Object.keys(tree).sort();
+    const dirs = {};
+    
+    files.forEach(f => {
+        const parts = f.split('/');
+        const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+        if (!dirs[dir]) dirs[dir] = [];
+        dirs[dir].push(f);
     });
-  });
-  document.getElementById('file-list').innerHTML = html ||
-    '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
+
+    let html = '';
+    Object.keys(dirs).sort().forEach(dir => {
+        if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
+        dirs[dir].forEach(f => {
+            const name = f.split('/').pop();
+            // ✅ Make sure onclick uses proper escaping
+            html += `
+                <div class="filetree__file" id="ft-${CSS.escape(f)}" 
+                     onclick="openFile('${f.replace(/'/g, "\\'")}')">
+                    <span class="filetree__file-icon">${fileIcon(name)}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
+                </div>`;
+        });
+    });
+
+    const fileList = document.getElementById('file-list');
+    if (fileList) {
+        fileList.innerHTML = html || '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
+    }
 }
 
 // ── Tabs + Code viewer ────────────────────────────────────────
