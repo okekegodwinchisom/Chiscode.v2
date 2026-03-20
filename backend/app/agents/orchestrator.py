@@ -175,8 +175,11 @@ async def node_scaffold(state: ProjectState) -> ProjectState:
             "stack": state.get("stack", {}),
         })
         state["file_plan"] = result["files"]
+
+        logger.debug("file_plan", project_id=state["project_id"], files=result["files"])
+
         await _push(state, "log",
-                    message=f"📋 {result['count']} files planned: {', '.join(result['files'][:5])}{'...' if result['count'] > 5 else ''}")
+                    message=f"📋 {result['count']} files planned: {', '.join(result['files'])}")
         await _call_tool("project_write", {
             "project_id": state["project_id"],
             "fields": {"file_plan_hint": result["files"], "status": "generating"},
