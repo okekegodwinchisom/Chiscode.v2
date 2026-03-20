@@ -248,9 +248,9 @@ async def confirm_project(
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
-    if doc.get("status") != "awaiting_confirmation":
-        raise HTTPException(status_code=400, detail="Project must be awaiting confirmation.")
-
+        
+    logger.info(f"Committing project {project_id} with status: {doc.get('status')}")
+    
     # Require GitHub token if push requested
     if req.push_to_github:
         encrypted = current_user.github_token_encrypted
