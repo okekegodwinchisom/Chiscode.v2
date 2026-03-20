@@ -507,66 +507,132 @@ function renderFileTree(tree) {
 
 // ── Tabs + Code viewer ────────────────────────────────────────
 function openFile(filepath) {
-  if (fileTree[filepath] === undefined) return;
-  if (!openTabs.find(t=>t.path===filepath))
-    openTabs.push({ path:filepath, label:filepath.split('/').pop() });
-  setActiveTab(filepath);
+    console.log('Opening file:', filepath); // Debug
+    
+    if (fileTree[filepath] === undefined) {
+        console.warn('File not found in tree:', filepath);
+        return;
+    }
+    
+    // Check if tab already exists
+    const existingTab = openTabs.find(t => t.path === filepath);
+    if (!existingTab) {
+        openTabs.push({ path: filepath, label: filepath.split('/').pop() });
+    }
+    
+    setActiveTab(filepath);
 }
 
 function setActiveTab(filepath) {
-  activeTab = filepath;
-  renderTabs();
-  renderCode(filepath);
-  document.querySelectorAll('.filetree__file').forEach(el=>el.classList.remove('filetree__file--active'));
-  const el = document.getElementById('ft-'+CSS.escape(filepath));
-  if (el) { el.classList.add('filetree__file--active'); el.scrollIntoView({block:'nearest'}); }
+    console.log('Setting active tab:', filepath); // Debug
+    
+    activeTab = filepath;
+    renderTabs();
+    renderCode(filepath);
+    
+    // Highlight the active file in the tree
+    document.querySelectorAll('.filetree__file').forEach(el => {
+        el.classList.remove('filetree__file--active');
+    });
+    
+    const el = document.getElementById('ft-' + CSS.escape(filepath));
+    if (el) {
+        el.classList.add('filetree__file--active');
+        el.scrollIntoView({ block: 'nearest' });
+    } else {
+        console.warn('Could not find tree element for:', filepath);
+    }
 }
 
 function closeTab(filepath, e) {
-  e.stopPropagation();
-  openTabs = openTabs.filter(t=>t.path!==filepath);
-  if (activeTab===filepath) {
-    activeTab = openTabs.length ? openTabs[openTabs.length-1].path : null;
-    activeTab ? renderCode(activeTab) : showEmpty();
-  }
-  renderTabs();
+    if (e) e.stopPropagation();
+    
+    console.log('Closing tab:', filepath);
+    
+    openTabs = openTabs.filter(t => t.path !== filepath);
+    
+    if (activeTab === filepath) {
+        activeTab = openTabs.length ? openTabs[openTabs.length - 1].path : null;
+        if (activeTab) {
+            renderCode(activeTab);
+        } else {
+            showEmpty();
+        }
+    }
+    
+    renderTabs();
 }
 
 function renderTabs() {
-  document.getElementById('tabs-bar').innerHTML = openTabs.map(t=>`
-    <div class="codeview__tab ${t.path===activeTab?'codeview__tab--active':''}" onclick="setActiveTab(${JSON.stringify(t.path)})">
-      <span>${fileIcon(t.label)}</span>
-      <span>${escHtml(t.label)}</span>
-      <span class="codeview__tab-close" onclick="closeTab(${JSON.stringify(t.path)},event)">×</span>
-    </div>`).join('');
+    const tabsBar = document.getElementById('tabs-bar');
+    if (!tabsBar) return;
+    
+    if (openTabs.length === 0) {
+        tabsBar.innerHTML = '<div class="codeview__tab-empty" style="padding:0.75rem; color:var(--muted); font-size:0.8rem;">No files open</div>';
+        return;
+    }
+    
+    tabsBar.innerHTML = openTabs.map(t => `
+        <div class="codeview__tab ${t.path === activeTab ? 'codeview__tab--active' : ''}"
+             onclick="setActiveTab('${t.path.replace(/'/g, "\\'")}')">
+            <span>${fileIcon(t.label)}</span>
+            <span style="margin-left: 0.3rem;">${escHtml(t.label)}</span>
+            <span class="codeview__tab-close" onclick="closeTab('${t.path.replace(/'/g, "\\'")}', event)">×</span>
+        </div>
+    `).join('');
 }
 
 function renderCode(filepath) {
-  const content  = fileTree[filepath]||'';
-  document.getElementById('toolbar').style.display = 'flex';
-  document.getElementById('current-filepath').textContent = filepath;
-  const lines    = content.split('\n');
-  const lineNums = lines.map((_,i)=>i+1).join('\n');
-  document.getElementById('code-body').innerHTML = `
-    <div class="line-numbers-wrapper">
-      <div class="line-numbers">${escHtml(lineNums)}</div>
-      <div class="line-numbers-code">
-        <pre><code class="language-${detectLang(filepath)}">${escHtml(content)}</code></pre>
-      </div>
-    </div>`;
-  setTimeout(()=>{
-    if (window.hljs)
-      document.getElementById('code-body').querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el));
-  }, 50);
+    const content = fileTree[filepath] || '';
+    const lang = detectLang(filepath);
+    
+    // Update toolbar
+    const toolbar = document.getElementById('toolbar');
+    const filepathEl = document.getElementById('current-filepath');
+    if (toolbar) toolbar.style.display = 'flex';
+    if (filepathEl) filepathEl.textContent = filepath;
+    
+    // Generate line numbers
+    const lines = content.split('\n');
+    const lineNums = lines.map((_, i) => i + 1).join('\n');
+    
+    const codeBody = document.getElementById('code-body');
+    if (!codeBody) return;
+    
+    codeBody.innerHTML = `
+        <div class="line-numbers-wrapper" style="display: flex; height: 100%; overflow: auto;">
+            <div class="line-numbers" style="padding: 1rem 0.75rem; background: var(--void); text-align: right; user-select: none; font-family: monospace; font-size: 0.85rem; color: var(--muted); border-right: 1px solid var(--border);">
+                ${escHtml(lineNums)}
+            </div>
+            <div class="line-numbers-code" style="flex: 1; overflow: auto;">
+                <pre><code class="language-${lang}">${escHtml(content)}</code></pre>
+            </div>
+        </div>
+    `;
+    
+    // Apply syntax highlighting
+    setTimeout(() => {
+        if (window.hljs) {
+            codeBody.querySelectorAll('pre code').forEach(el => {
+                hljs.highlightElement(el);
+            });
+        }
+    }, 50);
 }
 
 function showEmpty() {
-  document.getElementById('toolbar').style.display='none';
-  document.getElementById('code-body').innerHTML=`
-    <div class="codeview__empty">
-      <div class="codeview__empty-icon">📂</div>
-      <p style="font-size:0.9rem;color:var(--ghost)">Select a file from the tree</p>
-    </div>`;
+    const toolbar = document.getElementById('toolbar');
+    const codeBody = document.getElementById('code-body');
+    
+    if (toolbar) toolbar.style.display = 'none';
+    if (codeBody) {
+        codeBody.innerHTML = `
+            <div class="codeview__empty" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--ghost);">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">📂</div>
+                <p style="font-size: 0.9rem;">Select a file from the tree</p>
+            </div>
+        `;
+    }
 }
 
 // ── Copy ──────────────────────────────────────────────────────
