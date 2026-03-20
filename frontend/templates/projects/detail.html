@@ -459,7 +459,6 @@ async function apiFetch(path, opts={}) {
   return res;
 }
 
-// ── Load project ─────────────────────────────────────────────
 // ── Load project (optimized parallel loading) ─────────────────
 async function loadProject() {
   // Show loading skeleton but allow user to see something
@@ -738,6 +737,124 @@ async function deleteProject() {
   }
 }
 
+// ── GitHub Integration ────────────────────────────────────────
+
+async function checkGitHubStatus() {
+  try {
+    const res = await apiFetch('/users/me');
+    if (!res) return false;
+    
+    const user = await res.json();
+    const statusEl = document.getElementById('github-status');
+    const commitBtn = document.getElementById('commit-btn');
+    
+    if (user.github_username) {
+      statusEl.innerHTML = `✅ Connected as <a href="https://github.com/${user.github_username}" target="_blank" style="color:var(--electric)">@${user.github_username}</a>`;
+      if (commitBtn) commitBtn.disabled = false;
+      return true;
+    } else {
+      statusEl.innerHTML = `❌ GitHub not connected. <a href="/api/v1/auth/github" style="color:var(--electric)">Connect now</a>`;
+      if (commitBtn) commitBtn.disabled = true;
+      return false;
+    }
+  } catch (error) {
+    console.error('GitHub status check failed:', error);
+    return false;
+  }
+}
+
+function openCommitModal() {
+  // Check GitHub status first
+  checkGitHubStatus().then(hasGitHub => {
+    if (!hasGitHub) {
+      // Show a more prominent error
+      const statusEl = document.getElementById('github-status');
+      if (statusEl) {
+        statusEl.innerHTML = `❌ Please <a href="/api/v1/auth/github" style="color:var(--electric)">connect GitHub</a> first`;
+      }
+      return;
+    }
+    document.getElementById('commit-modal').style.display = 'flex';
+    // Focus on the commit message input
+    setTimeout(() => {
+      const input = document.getElementById('commit-message');
+      if (input) input.focus();
+    }, 100);
+  });
+}
+
+function closeCommitModal() {
+  document.getElementById('commit-modal').style.display = 'none';
+  document.getElementById('commit-error').style.display = 'none';
+}
+
+async function submitCommit() {
+  const commitMessage = document.getElementById('commit-message').value.trim() || 
+                        'Update from ChisCode';
+  const btn = document.getElementById('commit-submit-btn');
+  const errorEl = document.getElementById('commit-error');
+  const progressEl = document.getElementById('commit-progress');
+  const progressText = document.getElementById('commit-progress-text');
+  
+  btn.disabled = true;
+  btn.textContent = 'Pushing...';
+  errorEl.style.display = 'none';
+  progressEl.classList.add('show');
+  progressText.textContent = 'Creating repository...';
+
+  try {
+    const res = await apiFetch('/projects/' + projectId + '/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commit_message: commitMessage,
+        push_to_github: true
+      })
+    });
+
+    if (!res) return;
+
+    if (res.ok) {
+      const result = await res.json();
+      progressText.textContent = '✅ Push successful!';
+      
+      // Update UI with GitHub link
+      if (result.repo_url) {
+        const linkEl = document.getElementById('github-link');
+        linkEl.href = result.repo_url;
+        linkEl.textContent = result.repo_url.replace('https://', '');
+        document.getElementById('github-link-row').style.display = 'block';
+        
+        // Show success message
+        const successEl = document.getElementById('commit-success');
+        successEl.innerHTML = `✅ Successfully pushed to <a href="${result.repo_url}" target="_blank">GitHub</a>`;
+        successEl.style.display = 'block';
+      }
+      
+      setTimeout(() => {
+        closeCommitModal();
+        progressEl.classList.remove('show');
+        btn.disabled = false;
+        btn.textContent = 'Push to GitHub';
+      }, 2000);
+      
+    } else {
+      const err = await res.json().catch(() => ({}));
+      errorEl.textContent = err.detail || 'Commit failed. Please try again.';
+      errorEl.style.display = 'block';
+      progressEl.classList.remove('show');
+      btn.disabled = false;
+      btn.textContent = 'Push to GitHub';
+    }
+  } catch (error) {
+    console.error('Commit error:', error);
+    errorEl.textContent = 'Network error. Please try again.';
+    errorEl.style.display = 'block';
+    progressEl.classList.remove('show');
+    btn.disabled = false;
+    btn.textContent = 'Push to GitHub';
+  }
+}
   
 // ── Upgrade modal ─────────────────────────────────────────────
 function openUpgradeModal()  { document.getElementById('upgrade-modal').style.display='flex'; }
