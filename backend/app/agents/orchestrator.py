@@ -249,8 +249,31 @@ async def node_generate(state: ProjectState) -> ProjectState:
                 ),
             })
             await queue.put(("ok", filename, result["content"]))
-        except  Exception as exc:
+        except Exception as exc:
             await queue.put(("error", filename, str(exc)))
+
+    tasks = [asyncio.create_task(_gen_one(f)) for f in file_plan]
+    completed = 0
+
+    while completed < len(file_plan):
+        flag, filename, payload = await queue.get()
+        completed += 1
+
+        if flag == "ok":
+            file_tree[filename] = payload
+            await _push(state, "file", filename=filename,
+                        size=len(payload), progress=f"{completed}/{len(file_plan)}")
+            await _call_tool("project_write", {
+                "project_id": state["project_id"],
+                "fields":     {"file_tree": file_tree},
+            })
+        else:
+            await _push(state, "log", message=f"❌ {filename} failed: {payload}")
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    state["file_tree"] = file_tree
+    return state
 # ═══════════════════════════════════════════════════════════════
 # Node: quality_check
 # ═══════════════════════════════════════════════════════════════
