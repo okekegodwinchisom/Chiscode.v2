@@ -12,97 +12,56 @@
   /* ── Hide mobile-only elements on desktop ── */
   @media (min-width: 769px) {
     .mobile-action-bar { display: none !important; }
-    .mobile-tabs { display: none !important; }
-    .mobile-actions-panel { display: none !important; }
   }
 
   @media (max-width: 768px) {
+    /* Full page scroll on mobile — no fixed height tricks */
     .viewer {
-      display: flex;
-      flex-direction: column;
-      height: calc(100vh - var(--nav-h));
-      overflow: hidden;
+      display: block;
+      height: auto;
+      overflow: visible;
     }
 
-    /* ── Mobile action bar (sticky top) ── */
+    /* File tree: natural height, no overflow clipping */
+    .filetree {
+      display: block;
+      height: auto;
+      max-height: none;
+      overflow: visible;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .filetree__list {
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
+    /* Hide desktop action buttons — replaced by mobile-action-bar */
+    .filetree__actions { display: none !important; }
+
+    /* Hide code viewer entirely on mobile */
+    .codeview { display: none !important; }
+
+    /* Mobile action bar: sits below file list, full width */
     .mobile-action-bar {
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
-      padding: 0.5rem 0.75rem;
+      gap: 0.4rem;
+      padding: 0.75rem 1rem;
       background: var(--deep);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      z-index: 10;
+      border-top: 1px solid var(--border);
     }
     .mobile-action-bar .action-row {
       display: flex;
-      gap: 0.35rem;
+      gap: 0.4rem;
     }
     .mobile-action-bar .btn {
       flex: 1;
       justify-content: center;
-      font-size: 0.7rem !important;
-      padding: 0.38rem 0.4rem !important;
+      font-size: 0.75rem;
+      padding: 0.45rem 0.5rem;
     }
-    .mobile-action-bar svg {
-      width: 11px !important;
-      height: 11px !important;
-      margin-right: 0.25rem !important;
-    }
-
-    /* ── File tree fills remaining space ── */
-    .filetree {
-      flex: 1;
-      min-height: 0;
-      max-height: none;
-      border-right: none;
-      border-bottom: none;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-    .filetree__actions { display: none !important; }
-    .filetree__list {
-      flex: 1;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    /* ── Code view: full screen overlay, hidden until file selected ── */
-    .codeview {
-      position: fixed;
-      inset: 0;
-      top: var(--nav-h);
-      z-index: 50;
-      display: none;
-      flex-direction: column;
-      background: var(--void);
-    }
-    .codeview.mobile-code-open {
-      display: flex;
-    }
-
-    /* ── Back button in code toolbar ── */
-    .mobile-back-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      background: none;
-      border: none;
-      color: var(--electric);
-      font-size: 0.78rem;
-      font-family: var(--font-code);
-      cursor: pointer;
-      padding: 0;
-      flex-shrink: 0;
-      margin-right: 0.75rem;
-    }
-    .mobile-back-btn svg { width: 14px; height: 14px; }
-
-    /* Hide old tab elements */
-    .mobile-tabs { display: none !important; }
-    .mobile-actions-panel { display: none !important; }
   }
 
   /* ── File tree ──────────────────────────────────────────── */
