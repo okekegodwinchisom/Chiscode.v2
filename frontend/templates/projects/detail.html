@@ -286,6 +286,31 @@
 
     </div>
   </div>
+  
+  <!-- ── Mobile Bottom Tabs (only shown on mobile) ── -->
+  <nav class="mobile-tabs" id="mobile-tabs">
+    <button class="mobile-tab mobile-tab--active" id="tab-files" onclick="switchMobileTab('files')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+        <polyline points="13 2 13 9 20 9"/>
+      </svg>
+      Files
+    </button>
+    <button class="mobile-tab" id="tab-code" onclick="switchMobileTab('code')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="16 18 22 12 16 6"/>
+        <polyline points="8 6 2 12 8 18"/>
+      </svg>
+      Code
+    </button>
+    <button class="mobile-tab" id="tab-actions" onclick="switchMobileTab('actions')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+      </svg>
+      Actions
+    </button>
+  </nav>
 
   <!-- ── Code Viewer ── -->
   <div class="codeview">
