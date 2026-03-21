@@ -235,23 +235,22 @@ async def node_generate(state: ProjectState) -> ProjectState:
     queue: asyncio.Queue = asyncio.Queue()
 
     async def _gen_one(filename: str) -> None:
-    try:
-        result = await _call_tool("code_generator", {
-            "filename":      filename,
-            "system_prompt": system_prompt,
-            "user_prompt": (
-                f"Generate the file: {filename}\n\n"
-                f"This file is part of a {stack_desc} project.\n"
-                f"Full project structure:\n"
-                + "\n".join(f"  - {f}" for f in file_plan)
-                + f"\n\nGenerate ONLY the content for {filename}. "
-                f"Ensure imports and references match the other files in this project."
-            ),
-        })
-        await queue.put(("ok", filename, result["content"]))
-    except Exception as exc:
-        await queue.put(("error", filename, str(exc)))
-
+        try:
+            result = await _call_tool("code_generator", {
+                "filename":      filename,
+                "system_prompt": system_prompt,
+                "user_prompt": (
+                    f"Generate the file: {filename}\n\n"
+                    f"This file is part of a {stack_desc} project.\n"
+                    f"Full project structure:\n"
+                    + "\n".join(f"  - {f}" for f in file_plan)
+                    + f"\n\nGenerate ONLY the content for {filename}. "
+                    f"Ensure imports and references match the other files in this project."
+                ),
+            })
+            await queue.put(("ok", filename, result["content"]))
+        except  Exception as exc:
+            await queue.put(("error", filename, str(exc)))
 # ═══════════════════════════════════════════════════════════════
 # Node: quality_check
 # ═══════════════════════════════════════════════════════════════
