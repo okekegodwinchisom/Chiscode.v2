@@ -964,6 +964,56 @@ async function submitIterate() {
   btn.disabled=false; btn.textContent='Run Iteration';
 }
 
+// ── Mobile bottom tabs ────────────────────────────────────────
+const isMobile = () => window.innerWidth <= 768;
+
+function switchMobileTab(tab) {
+  if (!isMobile()) return;
+
+  // Hide all panels
+  document.querySelector('.filetree').classList.remove('mobile-active');
+  document.querySelector('.codeview').classList.remove('mobile-active');
+  document.getElementById('mobile-actions-panel').classList.remove('mobile-active');
+
+  // Deactivate all tabs
+  document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('mobile-tab--active'));
+
+  // Show selected panel + activate tab
+  if (tab === 'files') {
+    document.querySelector('.filetree').classList.add('mobile-active');
+    document.getElementById('tab-files').classList.add('mobile-tab--active');
+  } else if (tab === 'code') {
+    document.querySelector('.codeview').classList.add('mobile-active');
+    document.getElementById('tab-code').classList.add('mobile-tab--active');
+  } else if (tab === 'actions') {
+    document.getElementById('mobile-actions-panel').classList.add('mobile-active');
+    document.getElementById('tab-actions').classList.add('mobile-tab--active');
+  }
+}
+
+// Init mobile tabs on load
+function initMobileTabs() {
+  if (isMobile()) {
+    document.getElementById('mobile-tabs').style.display = 'flex';
+    switchMobileTab('files'); // start on files tab
+  } else {
+    document.getElementById('mobile-tabs').style.display = 'none';
+    // Ensure desktop shows both panels
+    document.querySelector('.filetree').classList.remove('mobile-active');
+    document.querySelector('.codeview').classList.remove('mobile-active');
+  }
+}
+
+window.addEventListener('resize', initMobileTabs);
+document.addEventListener('DOMContentLoaded', initMobileTabs);
+
+// Auto-switch to code tab when a file is clicked on mobile
+const _origOpenFile = window.openFile;
+window.openFile = function(filename) {
+  if (_origOpenFile) _origOpenFile(filename);
+  if (isMobile()) switchMobileTab('code');
+};  
+
 // ── Keyboard shortcuts ───────────────────────────────────────
 document.addEventListener('keydown', e=>{
   if ((e.ctrlKey||e.metaKey) && e.key==='c'
