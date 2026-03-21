@@ -567,24 +567,26 @@ function closeMobileCode() {
 function syncMobileActionBar(p) {
   if (!isMobile()) return;
 
-  // Deploy + Preview
   if (p.status === 'complete') {
-    const deployBtn  = document.getElementById('mob-deploy-btn');
-    const previewBtn = document.getElementById('mob-preview-btn');
-    if (deployBtn)  { deployBtn.href = `/projects/${projectId}/deploy`; deployBtn.style.display = 'flex'; }
-    if (previewBtn) { previewBtn.href = `/projects/${projectId}/deploy?tab=preview`; previewBtn.style.display = 'flex'; }
+    const row = document.getElementById('mob-deploy-preview-row');
+    if (row) {
+      row.style.display = 'flex';
+      document.getElementById('mob-deploy-btn').href  = `/projects/${projectId}/deploy`;
+      document.getElementById('mob-preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
+    }
   }
 
-  // GitHub buttons
-  const mobPushBtn = document.getElementById('mob-push-btn');
+  const mobPushRow = document.getElementById('mob-push-btn-row');
+  const mobGhRow   = document.getElementById('mob-gh-link-row');
   const mobGhLink  = document.getElementById('mob-gh-link');
 
   if (p.github_repo_url) {
-    if (mobGhLink)  { mobGhLink.href = p.github_repo_url; mobGhLink.style.display = 'flex'; }
-    if (mobPushBtn) mobPushBtn.style.display = 'none';
+    if (mobGhLink)  mobGhLink.href = p.github_repo_url;
+    if (mobGhRow)   mobGhRow.style.display  = 'block';
+    if (mobPushRow) mobPushRow.style.display = 'none';
   } else if (p.status === 'complete') {
-    if (mobPushBtn) mobPushBtn.style.display = 'flex';
-    if (mobGhLink)  mobGhLink.style.display  = 'none';
+    if (mobPushRow) mobPushRow.style.display = 'block';
+    if (mobGhRow)   mobGhRow.style.display   = 'none';
   }
 }
 
