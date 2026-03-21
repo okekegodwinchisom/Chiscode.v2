@@ -528,6 +528,46 @@ async function apiFetch(path, opts={}) {
   return res;
 }
 
+// ── Mobile helpers ────────────────────────────────────────────
+const isMobile = () => window.innerWidth <= 768;
+
+function openMobileCode() {
+  if (!isMobile()) return;
+  document.querySelector('.codeview').classList.add('mobile-code-open');
+  const backBtn = document.getElementById('mobile-back-btn');
+  if (backBtn) backBtn.style.display = 'flex';
+}
+
+function closeMobileCode() {
+  document.querySelector('.codeview').classList.remove('mobile-code-open');
+  const backBtn = document.getElementById('mobile-back-btn');
+  if (backBtn) backBtn.style.display = 'none';
+}
+
+function syncMobileActionBar(p) {
+  if (!isMobile()) return;
+
+  // Deploy + Preview
+  if (p.status === 'complete') {
+    const deployBtn  = document.getElementById('mob-deploy-btn');
+    const previewBtn = document.getElementById('mob-preview-btn');
+    if (deployBtn)  { deployBtn.href = `/projects/${projectId}/deploy`; deployBtn.style.display = 'flex'; }
+    if (previewBtn) { previewBtn.href = `/projects/${projectId}/deploy?tab=preview`; previewBtn.style.display = 'flex'; }
+  }
+
+  // GitHub buttons
+  const mobPushBtn = document.getElementById('mob-push-btn');
+  const mobGhLink  = document.getElementById('mob-gh-link');
+
+  if (p.github_repo_url) {
+    if (mobGhLink)  { mobGhLink.href = p.github_repo_url; mobGhLink.style.display = 'flex'; }
+    if (mobPushBtn) mobPushBtn.style.display = 'none';
+  } else if (p.status === 'complete') {
+    if (mobPushBtn) mobPushBtn.style.display = 'flex';
+    if (mobGhLink)  mobGhLink.style.display  = 'none';
+  }
+}
+
 // ── Load project ─────────────────────────────────────────────
 async function loadProject() {
   const res = await apiFetch('/projects/'+projectId);
@@ -554,27 +594,31 @@ async function loadProject() {
   document.getElementById('info-date').textContent    = new Date(p.created_at).toLocaleDateString();
   document.getElementById('proj-info').style.display  = 'grid';
 
+  // Desktop: deploy/preview row
   if (p.status === 'complete') {
     const row = document.getElementById('deploy-preview-row');
-    row.style.display = 'flex';
-    document.getElementById('deploy-btn').href  = `/projects/${projectId}/deploy`;
-    document.getElementById('preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
+    if (row) {
+      row.style.display = 'flex';
+      document.getElementById('deploy-btn').href  = `/projects/${projectId}/deploy`;
+      document.getElementById('preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
+    }
   }
 
-  // GitHub button: push if not committed, link if already pushed
+  // Desktop: GitHub rows
   const pushRow = document.getElementById('github-push-row');
   const ghRow   = document.getElementById('github-link-row');
   const ghLink  = document.getElementById('github-link');
 
   if (p.github_repo_url) {
-    ghLink.href = p.github_repo_url;
-    ghRow.style.display   = 'block';
-    pushRow.style.display = 'none';
+    if (ghLink) ghLink.href = p.github_repo_url;
+    if (ghRow)  ghRow.style.display   = 'block';
+    if (pushRow) pushRow.style.display = 'none';
   } else if (p.status === 'complete') {
-    pushRow.style.display = 'block';
-    ghRow.style.display   = 'none';
+    if (pushRow) pushRow.style.display = 'block';
+    if (ghRow)   ghRow.style.display   = 'none';
   }
 
+  // User/plan
   const planRes = await apiFetch('/users/me');
   if (planRes?.ok) {
     const u = await planRes.json();
@@ -595,201 +639,131 @@ async function loadProject() {
   const files = Object.keys(fileTree);
   if (files.length) openFile(files[0]);
 
-  if (isMobile()) {
-    // Mirror deploy/preview row
-    const mobileDeployRow = document.getElementById('mobile-deploy-preview-row');
-    if (mobileDeployRow && p.status === 'complete') {
-      mobileDeployRow.style.display = 'flex';
-      document.getElementById('mobile-deploy-btn').href  = `/projects/${projectId}/deploy`;
-      document.getElementById('mobile-preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
-    }
-
-    // Mirror GitHub rows
-    const mobilePushRow = document.getElementById('mobile-github-push-row');
-    const mobileGhRow   = document.getElementById('mobile-github-link-row');
-    const mobileGhLink  = document.getElementById('mobile-github-link');
-
-    if (p.github_repo_url) {
-      mobileGhLink.href             = p.github_repo_url;
-      mobileGhRow.style.display     = 'block';
-      mobilePushRow.style.display   = 'none';
-    } else if (p.status === 'complete') {
-      mobilePushRow.style.display   = 'block';
-      mobileGhRow.style.display     = 'none';
-    }
-
-    // Init tabs after data is loaded
-    initMobileTabs();
-  }
+  // Sync mobile action bar
+  syncMobileActionBar(p);
 }
 
-  
 function renderFileTree(tree) {
-    const files = Object.keys(tree).sort();
-    const dirs = {};
-    
-    files.forEach(f => {
-        const parts = f.split('/');
-        const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-        if (!dirs[dir]) dirs[dir] = [];
-        dirs[dir].push(f);
+  const files = Object.keys(tree).sort();
+  const dirs  = {};
+  files.forEach(f => {
+    const parts = f.split('/');
+    const dir   = parts.length > 1 ? parts.slice(0,-1).join('/') : '';
+    if (!dirs[dir]) dirs[dir] = [];
+    dirs[dir].push(f);
+  });
+  let html = '';
+  Object.keys(dirs).sort().forEach(dir => {
+    if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
+    dirs[dir].forEach(f => {
+      const name = f.split('/').pop();
+      html += `
+        <div class="filetree__file" id="ft-${CSS.escape(f)}"
+             onclick="openFile('${f.replace(/'/g, "\\'")}')">
+          <span class="filetree__file-icon">${fileIcon(name)}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
+        </div>`;
     });
-
-    let html = '';
-    Object.keys(dirs).sort().forEach(dir => {
-        if (dir) html += `<div class="filetree__dir">${escHtml(dir)}/</div>`;
-        dirs[dir].forEach(f => {
-            const name = f.split('/').pop();
-            // ✅ Make sure onclick uses proper escaping
-            html += `
-                <div class="filetree__file" id="ft-${CSS.escape(f)}" 
-                     onclick="openFile('${f.replace(/'/g, "\\'")}')">
-                    <span class="filetree__file-icon">${fileIcon(name)}</span>
-                    <span style="overflow:hidden;text-overflow:ellipsis">${escHtml(name)}</span>
-                </div>`;
-        });
-    });
-
-    const fileList = document.getElementById('file-list');
-    if (fileList) {
-        fileList.innerHTML = html || '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
-    }
+  });
+  const fileList = document.getElementById('file-list');
+  if (fileList) {
+    fileList.innerHTML = html || '<div style="padding:1rem 1.25rem;color:var(--muted);font-size:0.8rem">No files generated yet.</div>';
+  }
 }
 
 // ── Tabs + Code viewer ────────────────────────────────────────
 function openFile(filepath) {
-    console.log('Opening file:', filepath); // Debug
-    
-    if (fileTree[filepath] === undefined) {
-        console.warn('File not found in tree:', filepath);
-        return;
-    }
-    
-    // Check if tab already exists
-    const existingTab = openTabs.find(t => t.path === filepath);
-    if (!existingTab) {
-        openTabs.push({ path: filepath, label: filepath.split('/').pop() });
-    }
-    
-    setActiveTab(filepath);
+  if (fileTree[filepath] === undefined) return;
+  if (!openTabs.find(t => t.path === filepath)) {
+    openTabs.push({ path: filepath, label: filepath.split('/').pop() });
+  }
+  setActiveTab(filepath);
+  // Auto-open code view on mobile
+  if (isMobile()) openMobileCode();
 }
 
 function setActiveTab(filepath) {
-    console.log('Setting active tab:', filepath); // Debug
-    
-    activeTab = filepath;
-    renderTabs();
-    renderCode(filepath);
-    
-    // Highlight the active file in the tree
-    document.querySelectorAll('.filetree__file').forEach(el => {
-        el.classList.remove('filetree__file--active');
-    });
-    
-    const el = document.getElementById('ft-' + CSS.escape(filepath));
-    if (el) {
-        el.classList.add('filetree__file--active');
-        el.scrollIntoView({ block: 'nearest' });
-    } else {
-        console.warn('Could not find tree element for:', filepath);
-    }
+  activeTab = filepath;
+  renderTabs();
+  renderCode(filepath);
+  document.querySelectorAll('.filetree__file').forEach(el => el.classList.remove('filetree__file--active'));
+  const el = document.getElementById('ft-' + CSS.escape(filepath));
+  if (el) { el.classList.add('filetree__file--active'); el.scrollIntoView({ block:'nearest' }); }
 }
 
 function closeTab(filepath, e) {
-    if (e) e.stopPropagation();
-    
-    console.log('Closing tab:', filepath);
-    
-    openTabs = openTabs.filter(t => t.path !== filepath);
-    
-    if (activeTab === filepath) {
-        activeTab = openTabs.length ? openTabs[openTabs.length - 1].path : null;
-        if (activeTab) {
-            renderCode(activeTab);
-        } else {
-            showEmpty();
-        }
-    }
-    
-    renderTabs();
+  if (e) e.stopPropagation();
+  openTabs = openTabs.filter(t => t.path !== filepath);
+  if (activeTab === filepath) {
+    activeTab = openTabs.length ? openTabs[openTabs.length-1].path : null;
+    if (activeTab) renderCode(activeTab);
+    else showEmpty();
+  }
+  renderTabs();
 }
 
 function renderTabs() {
-    const tabsBar = document.getElementById('tabs-bar');
-    if (!tabsBar) return;
-    
-    if (openTabs.length === 0) {
-        tabsBar.innerHTML = '<div class="codeview__tab-empty" style="padding:0.75rem; color:var(--muted); font-size:0.8rem;">No files open</div>';
-        return;
-    }
-    
-    tabsBar.innerHTML = openTabs.map(t => `
-        <div class="codeview__tab ${t.path === activeTab ? 'codeview__tab--active' : ''}"
-             onclick="setActiveTab('${t.path.replace(/'/g, "\\'")}')">
-            <span>${fileIcon(t.label)}</span>
-            <span style="margin-left: 0.3rem;">${escHtml(t.label)}</span>
-            <span class="codeview__tab-close" onclick="closeTab('${t.path.replace(/'/g, "\\'")}', event)">×</span>
-        </div>
-    `).join('');
+  const tabsBar = document.getElementById('tabs-bar');
+  if (!tabsBar) return;
+  if (openTabs.length === 0) {
+    tabsBar.innerHTML = '<div style="padding:0.75rem;color:var(--muted);font-size:0.8rem">No files open</div>';
+    return;
+  }
+  tabsBar.innerHTML = openTabs.map(t => `
+    <div class="codeview__tab ${t.path===activeTab?'codeview__tab--active':''}"
+         onclick="setActiveTab('${t.path.replace(/'/g,"\\'")}')">
+      <span>${fileIcon(t.label)}</span>
+      <span style="margin-left:0.3rem">${escHtml(t.label)}</span>
+      <span class="codeview__tab-close" onclick="closeTab('${t.path.replace(/'/g,"\\'")}',event)">×</span>
+    </div>
+  `).join('');
 }
 
 function renderCode(filepath) {
-    const content = fileTree[filepath] || '';
-    const lang = detectLang(filepath);
-    
-    // Update toolbar
-    const toolbar = document.getElementById('toolbar');
-    const filepathEl = document.getElementById('current-filepath');
-    if (toolbar) toolbar.style.display = 'flex';
-    if (filepathEl) filepathEl.textContent = filepath;
-    
-    // Generate line numbers
-    const lines = content.split('\n');
-    const lineNums = lines.map((_, i) => i + 1).join('\n');
-    
-    const codeBody = document.getElementById('code-body');
-    if (!codeBody) return;
-    
-    codeBody.innerHTML = `
-        <div class="line-numbers-wrapper" style="display: flex; height: 100%; overflow: auto;">
-            <div class="line-numbers" style="padding: 1rem 0.75rem; background: var(--void); text-align: right; user-select: none; font-family: monospace; font-size: 0.85rem; color: var(--muted); border-right: 1px solid var(--border);">
-                ${escHtml(lineNums)}
-            </div>
-            <div class="line-numbers-code" style="flex: 1; overflow: auto;">
-                <pre><code class="language-${lang}">${escHtml(content)}</code></pre>
-            </div>
-        </div>
-    `;
-    
-    // Apply syntax highlighting
-    setTimeout(() => {
-        if (window.hljs) {
-            codeBody.querySelectorAll('pre code').forEach(el => {
-                hljs.highlightElement(el);
-            });
-        }
-    }, 50);
+  const content   = fileTree[filepath] || '';
+  const lang      = detectLang(filepath);
+  const toolbar   = document.getElementById('toolbar');
+  const filepathEl = document.getElementById('current-filepath');
+  if (toolbar)    toolbar.style.display = 'flex';
+  if (filepathEl) filepathEl.textContent = filepath;
+
+  // Show back button on mobile
+  const backBtn = document.getElementById('mobile-back-btn');
+  if (backBtn) backBtn.style.display = isMobile() ? 'flex' : 'none';
+
+  const lines   = content.split('\n');
+  const lineNums = lines.map((_,i) => i+1).join('\n');
+  const codeBody = document.getElementById('code-body');
+  if (!codeBody) return;
+
+  codeBody.innerHTML = `
+    <div class="line-numbers-wrapper" style="display:flex;height:100%;overflow:auto">
+      <div class="line-numbers">${escHtml(lineNums)}</div>
+      <div class="line-numbers-code">
+        <pre><code class="language-${lang}">${escHtml(content)}</code></pre>
+      </div>
+    </div>
+  `;
+  setTimeout(() => {
+    if (window.hljs) codeBody.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  }, 50);
 }
 
 function showEmpty() {
-    const toolbar = document.getElementById('toolbar');
-    const codeBody = document.getElementById('code-body');
-    
-    if (toolbar) toolbar.style.display = 'none';
-    if (codeBody) {
-        codeBody.innerHTML = `
-            <div class="codeview__empty" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--ghost);">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">📂</div>
-                <p style="font-size: 0.9rem;">Select a file from the tree</p>
-            </div>
-        `;
-    }
+  const toolbar  = document.getElementById('toolbar');
+  const codeBody = document.getElementById('code-body');
+  if (toolbar)  toolbar.style.display = 'none';
+  if (codeBody) codeBody.innerHTML = `
+    <div class="codeview__empty">
+      <div class="codeview__empty-icon">📂</div>
+      <p style="font-size:0.9rem;color:var(--ghost)">Select a file from the tree</p>
+    </div>`;
 }
 
 // ── Copy ──────────────────────────────────────────────────────
 function copyCurrentFile() {
   if (!activeTab) return;
-  navigator.clipboard.writeText(fileTree[activeTab]||'').then(()=>{
+  navigator.clipboard.writeText(fileTree[activeTab]||'').then(() => {
     const btn = document.getElementById('copy-btn');
     if (btn) { btn.classList.add('copy-flash'); setTimeout(()=>btn.classList.remove('copy-flash'),700); }
     if (window.showToast) showToast('Copied!','success');
@@ -811,7 +785,7 @@ async function exportZip() {
   const btn      = document.getElementById('export-btn');
   const progress = document.getElementById('export-progress');
   const progText = document.getElementById('export-progress-text');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   progress.classList.add('show');
   progText.textContent = 'Building zip…';
   try {
@@ -819,7 +793,7 @@ async function exportZip() {
     while (!window.JSZip && attempts++ < 20) await new Promise(r=>setTimeout(r,100));
     if (!window.JSZip) throw new Error('JSZip library not loaded');
     const zip  = new JSZip();
-    const name = (projectData?.name || 'chiscode-project').replace(/[^a-zA-Z0-9_-]/g,'-');
+    const name = (projectData?.name||'chiscode-project').replace(/[^a-zA-Z0-9_-]/g,'-');
     const root = zip.folder(name);
     let done = 0;
     for (const [filepath, content] of Object.entries(fileTree)) {
@@ -829,28 +803,28 @@ async function exportZip() {
       await new Promise(r=>setTimeout(r,0));
     }
     progText.textContent = 'Compressing…';
-    const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:6} });
-    const a = Object.assign(document.createElement('a'),{ href:URL.createObjectURL(blob), download:`${name}.zip` });
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const blob = await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`${name}.zip`});
+    a.click(); URL.revokeObjectURL(a.href);
     progText.textContent = `✅ ${files.length} files exported`;
-    setTimeout(()=>{ progress.classList.remove('show'); progText.textContent='Building zip…'; }, 2500);
+    setTimeout(()=>{ progress.classList.remove('show'); progText.textContent='Building zip…'; },2500);
   } catch(err) {
     progText.textContent = '❌ Export failed';
-    setTimeout(()=>{ progress.classList.remove('show'); }, 2500);
-    console.error('Export error:', err);
+    setTimeout(()=>progress.classList.remove('show'),2500);
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
 // ── Delete ────────────────────────────────────────────────────
 function toggleDeleteConfirm() {
-  document.getElementById('delete-confirm').classList.toggle('show');
+  // Toggle both desktop and mobile delete confirms
+  document.getElementById('delete-confirm')?.classList.toggle('show');
+  document.getElementById('mobile-delete-confirm')?.classList.toggle('show');
 }
 
 async function deleteProject() {
-  const res = await apiFetch('/projects/'+projectId, { method:'DELETE' });
+  const res = await apiFetch('/projects/'+projectId, {method:'DELETE'});
   if (res && (res.ok || res.status===204)) {
     window.location.href = '/dashboard';
   } else {
@@ -863,32 +837,29 @@ async function deleteProject() {
 // ── Upgrade modal ─────────────────────────────────────────────
 function openUpgradeModal()  { document.getElementById('upgrade-modal').style.display='flex'; }
 function closeUpgradeModal() { document.getElementById('upgrade-modal').style.display='none'; }
-function startUpgrade(plan)  { if (window.showToast) showToast(`${plan} plan — billing coming soon!`, 'info'); }
+function startUpgrade(plan)  { if (window.showToast) showToast(`${plan} plan — billing coming soon!`,'info'); }
 
 // ── Push to GitHub modal ──────────────────────────────────────
 function openPushModal() {
   const u    = window._currentUser || {};
   const warn = document.getElementById('push-github-warning');
   warn.style.display = u.github_username ? 'none' : 'block';
-  document.getElementById('push-commit-msg').value     = '';
-  document.getElementById('push-log').style.display    = 'none';
-  document.getElementById('push-log').textContent      = '';
-  document.getElementById('push-error').style.display  = 'none';
+  document.getElementById('push-commit-msg').value      = '';
+  document.getElementById('push-log').style.display     = 'none';
+  document.getElementById('push-log').textContent       = '';
+  document.getElementById('push-error').style.display   = 'none';
   document.getElementById('push-success').style.display = 'none';
   const btn = document.getElementById('push-btn');
-  btn.disabled    = false;
-  btn.textContent = 'Push to GitHub';
+  btn.disabled = false; btn.textContent = 'Push to GitHub';
   document.getElementById('push-modal').style.display = 'flex';
 }
 
-function closePushModal() {
-  document.getElementById('push-modal').style.display = 'none';
-}
+function closePushModal() { document.getElementById('push-modal').style.display='none'; }
 
 function addPushLog(msg) {
   const el = document.getElementById('push-log');
   el.style.display = 'block';
-  el.textContent  += safeMsg(msg) + '\n';
+  el.textContent  += safeMsg(msg)+'\n';
   el.scrollTop     = el.scrollHeight;
 }
 
@@ -897,71 +868,67 @@ async function doPush() {
   const errEl     = document.getElementById('push-error');
   const successEl = document.getElementById('push-success');
   const msg       = document.getElementById('push-commit-msg').value.trim();
-
-  errEl.style.display    = 'none';
-  successEl.style.display = 'none';
-  btn.disabled    = true;
-  btn.textContent = 'Pushing…';
+  errEl.style.display = 'none'; successEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Pushing…';
 
   try {
-    const res = await apiFetch('/projects/' + projectId + '/confirm', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ commit_message: msg || null, push_to_github: true }),
+    const res = await apiFetch('/projects/'+projectId+'/confirm', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({commit_message:msg||null, push_to_github:true}),
     });
-
     if (!res) { btn.disabled=false; btn.textContent='Push to GitHub'; return; }
-
     if (!res.ok) {
       const err    = await res.json().catch(()=>({}));
       const detail = Array.isArray(err.detail)
-        ? err.detail.map(e => e.msg || safeMsg(e)).join(', ')
-        : (safeMsg(err.detail) || 'Push failed.');
-      if (detail.includes('GitHub') || detail.includes('token')) {
+        ? err.detail.map(e=>e.msg||safeMsg(e)).join(', ')
+        : (safeMsg(err.detail)||'Push failed.');
+      if (detail.includes('GitHub')||detail.includes('token')) {
         sessionStorage.setItem('chiscode_after_github', window.location.pathname);
-        window.location.href = '/api/v1/auth/github'; return;
+        window.location.href='/api/v1/auth/github'; return;
       }
-      errEl.textContent   = detail;
-      errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Push to GitHub'; return;
+      errEl.textContent=detail; errEl.style.display='block';
+      btn.disabled=false; btn.textContent='Push to GitHub'; return;
     }
-
     const reader  = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     while (true) {
-      const { done, value } = await reader.read();
+      const {done,value} = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value,{stream:true});
       const lines = buffer.split('\n'); buffer = lines.pop();
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         try {
           const ev = JSON.parse(line.slice(6));
-          if (ev.event === 'log' || ev.event === 'status') addPushLog(ev.message);
-          if (ev.event === 'github_done') {
-            successEl.innerHTML    = `✅ Pushed! <a href="${escHtml(ev.repo_url)}" target="_blank" style="color:var(--electric)">${escHtml(ev.repo_url)}</a>`;
-            successEl.style.display = 'block';
-            btn.textContent = 'Done ✓';
+          if (ev.event==='log'||ev.event==='status') addPushLog(ev.message);
+          if (ev.event==='github_done') {
+            successEl.innerHTML = `✅ Pushed! <a href="${escHtml(ev.repo_url)}" target="_blank" style="color:var(--electric)">${escHtml(ev.repo_url)}</a>`;
+            successEl.style.display='block'; btn.textContent='Done ✓';
             const ghLink  = document.getElementById('github-link');
             const ghRow   = document.getElementById('github-link-row');
             const pushRow = document.getElementById('github-push-row');
-            if (ghLink)  ghLink.href           = ev.repo_url;
-            if (ghRow)   ghRow.style.display   = 'block';
-            if (pushRow) pushRow.style.display  = 'none';
+            if (ghLink)  ghLink.href          = ev.repo_url;
+            if (ghRow)   ghRow.style.display  = 'block';
+            if (pushRow) pushRow.style.display = 'none';
+            // Update mobile bar too
+            const mobGh   = document.getElementById('mob-gh-link');
+            const mobPush = document.getElementById('mob-push-btn');
+            if (mobGh)   { mobGh.href = ev.repo_url; mobGh.style.display='flex'; }
+            if (mobPush)   mobPush.style.display='none';
           }
-          if (ev.event === 'error') {
-            errEl.textContent   = safeMsg(ev.message) || 'Push failed.';
-            errEl.style.display = 'block';
-            btn.disabled = false; btn.textContent = 'Push to GitHub';
+          if (ev.event==='error') {
+            errEl.textContent=safeMsg(ev.message)||'Push failed.';
+            errEl.style.display='block';
+            btn.disabled=false; btn.textContent='Push to GitHub';
           }
         } catch {}
       }
     }
   } catch(e) {
-    errEl.textContent   = 'Network error. Please try again.';
-    errEl.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Push to GitHub';
+    errEl.textContent='Network error. Please try again.';
+    errEl.style.display='block';
+    btn.disabled=false; btn.textContent='Push to GitHub';
   }
 }
 
@@ -979,8 +946,8 @@ async function submitIterate() {
   const logEl   = document.getElementById('iterate-log');
   const logBody = document.getElementById('iterate-log-body');
   const errEl   = document.getElementById('iterate-error');
-  btn.disabled  = true; btn.textContent = 'Running…';
-  logEl.style.display = 'block'; errEl.style.display = 'none';
+  btn.disabled=true; btn.textContent='Running…';
+  logEl.style.display='block'; errEl.style.display='none';
 
   function addLog(msg, cls='') {
     const line = document.createElement('div');
@@ -991,18 +958,17 @@ async function submitIterate() {
   }
 
   addLog('Starting iteration…');
-  const res = await apiFetch('/projects/'+projectId+'/iterate', {
+  const res = await apiFetch('/projects/'+projectId+'/iterate',{
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt}),
   });
-  if (!res || !res.ok) {
+  if (!res||!res.ok) {
     const err = res ? await res.json().catch(()=>({})) : {};
-    errEl.textContent = safeMsg(err.detail)||'Iterate failed — ensure project is complete and GitHub is connected.';
+    errEl.textContent=safeMsg(err.detail)||'Iterate failed — ensure project is complete and GitHub is connected.';
     errEl.style.display='block'; btn.disabled=false; btn.textContent='Run Iteration'; return;
   }
-
   const reader  = res.body.getReader();
   const decoder = new TextDecoder();
-  let   buffer  = '';
+  let buffer = '';
   while (true) {
     const {done,value} = await reader.read();
     if (done) break;
@@ -1032,68 +998,30 @@ async function submitIterate() {
   btn.disabled=false; btn.textContent='Run Iteration';
 }
 
-// ── Mobile bottom tabs ────────────────────────────────────────
-const isMobile = () => window.innerWidth <= 768;
-
-function switchMobileTab(tab) {
-  if (!isMobile()) return;
-
-  // Hide all panels
-  document.querySelector('.filetree').classList.remove('mobile-active');
-  document.querySelector('.codeview').classList.remove('mobile-active');
-  document.getElementById('mobile-actions-panel').classList.remove('mobile-active');
-
-  // Deactivate all tabs
-  document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('mobile-tab--active'));
-
-  // Show selected panel + activate tab
-  if (tab === 'files') {
-    document.querySelector('.filetree').classList.add('mobile-active');
-    document.getElementById('tab-files').classList.add('mobile-tab--active');
-  } else if (tab === 'code') {
-    document.querySelector('.codeview').classList.add('mobile-active');
-    document.getElementById('tab-code').classList.add('mobile-tab--active');
-  } else if (tab === 'actions') {
-    document.getElementById('mobile-actions-panel').classList.add('mobile-active');
-    document.getElementById('tab-actions').classList.add('mobile-tab--active');
+// ── Handle resize ─────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (!isMobile()) {
+    // Restore desktop layout
+    document.querySelector('.codeview').classList.remove('mobile-code-open');
+    const backBtn = document.getElementById('mobile-back-btn');
+    if (backBtn) backBtn.style.display = 'none';
   }
-}
+});
 
-// Init mobile tabs on load
-function initMobileTabs() {
-  if (isMobile()) {
-    document.getElementById('mobile-tabs').style.display = 'flex';
-    document.querySelector('.filetree__actions').style.display = 'none'; // ← add this
-    switchMobileTab('files');
-  } else {
-    document.getElementById('mobile-tabs').style.display = 'none';
-    document.querySelector('.filetree__actions').style.display = 'flex'; // ← and this
-    document.querySelector('.filetree').classList.remove('mobile-active');
-    document.querySelector('.codeview').classList.remove('mobile-active');
-  }
-}
-
-window.addEventListener('resize', initMobileTabs);
-document.addEventListener('DOMContentLoaded', initMobileTabs);
-
-// Auto-switch to code tab when a file is clicked on mobile
-const _origOpenFile = window.openFile;
-window.openFile = function(filename) {
-  if (_origOpenFile) _origOpenFile(filename);
-  if (isMobile()) switchMobileTab('code');
-};  
-
-// ── Keyboard shortcuts ───────────────────────────────────────
-document.addEventListener('keydown', e=>{
+// ── Keyboard shortcuts ────────────────────────────────────────
+document.addEventListener('keydown', e => {
   if ((e.ctrlKey||e.metaKey) && e.key==='c'
       && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
     copyCurrentFile();
   }
   if (e.key==='Escape') {
-    ['upgrade-modal','iterate-modal','push-modal'].forEach(id=>{
+    ['upgrade-modal','iterate-modal','push-modal'].forEach(id => {
       document.getElementById(id).style.display='none';
     });
-    document.getElementById('delete-confirm').classList.remove('show');
+    document.getElementById('delete-confirm')?.classList.remove('show');
+    document.getElementById('mobile-delete-confirm')?.classList.remove('show');
+    // Close mobile code view on Escape
+    if (isMobile()) closeMobileCode();
   }
 });
 
