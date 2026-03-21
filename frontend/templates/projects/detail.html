@@ -57,6 +57,69 @@
   .line-numbers { padding: 1.5rem 0.75rem 1.5rem 1.5rem; font-family: var(--font-code); font-size: 0.82rem; line-height: 1.65; color: var(--muted); text-align: right; user-select: none; background: var(--void); border-right: 1px solid var(--border); flex-shrink: 0; min-width: 3rem; }
   .line-numbers-code { flex: 1; overflow: auto; }
 
+  /* ── Code viewer with inline line numbers (ADD THIS) ────────────────────── */
+  .code-container {
+    height: 100%;
+    overflow: auto;
+    background: var(--void);
+  }
+
+  .code-block {
+    margin: 0;
+    padding: 0;
+    background: var(--void);
+    font-family: var(--font-code);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .code-line {
+    display: flex;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 1.5em;
+  }
+
+  .line-number {
+    display: inline-block;
+    min-width: 3.5rem;
+    text-align: right;
+    padding-right: 1rem;
+    user-select: none;
+    color: var(--muted);
+    background: var(--void);
+    border-right: 1px solid var(--border);
+    margin-right: 1rem;
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+
+  .line-content {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--void);
+  }
+
+  /* Optional: Add line count in toolbar */
+  .toolbar-info {
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+  }
+
+  .line-count {
+    font-size: 0.75rem;
+    color: var(--ghost);
+    font-family: var(--font-code);
+  }
+
+  .filepath {
+    font-family: var(--font-code);
+    font-size: 0.85rem;
+    color: var(--ghost);
+  }
+
   /* Status pill */
   .status-pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border-radius: 99px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
   .status-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
