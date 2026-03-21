@@ -5,68 +5,106 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
 <!-- JSZip for real .zip export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-
 <style>
   /* ── Layout ─────────────────────────────────────────────── */
   .viewer { display: grid; grid-template-columns: 272px 1fr; height: calc(100vh - var(--nav-h)); overflow: hidden; }
+
+  /* ── Hide mobile-only elements on desktop ── */
+  @media (min-width: 769px) {
+    .mobile-action-bar { display: none !important; }
+    .mobile-tabs { display: none !important; }
+    .mobile-actions-panel { display: none !important; }
+  }
 
   @media (max-width: 768px) {
     .viewer {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - var(--nav-h) - 56px); /* leave room for bottom tabs */
+      height: calc(100vh - var(--nav-h));
       overflow: hidden;
     }
-    /* Mobile panels — only one visible at a time */
-    .filetree  { display: none; flex-direction: column; height: 100%; max-height: 100%; overflow: hidden; border-right: none; border-bottom: none; }
-    .codeview  { display: none; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
-    .mobile-actions-panel { display: none; flex-direction: column; height: 100%; overflow-y: auto; background: var(--deep); padding: 0.75rem 1rem; gap: 0.5rem; }
 
-    /* Active panel */
-    .filetree.mobile-active  { display: flex; }
-    .codeview.mobile-active  { display: flex; }
-    .mobile-actions-panel.mobile-active { display: flex; }
-
-    /* Make file list fill available height */
-    .filetree__list { flex: 1; overflow-y: auto; min-height: 0; }
-    .filetree__actions { display: none; } /* moved to actions tab */
-
-    /* Bottom tab bar */
-    .mobile-tabs {
-      display: flex;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 56px;
-      background: var(--deep);
-      border-top: 1px solid var(--border);
-      z-index: 100;
-    }
-    .mobile-tab {
-      flex: 1;
+    /* ── Mobile action bar (sticky top) ── */
+    .mobile-action-bar {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.2rem;
-      font-size: 0.6rem;
-      font-family: var(--font-code);
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      cursor: pointer;
-      border: none;
-      background: none;
-      transition: color 0.15s;
+      gap: 0.3rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--deep);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
     }
-    .mobile-tab svg { width: 18px; height: 18px; }
-    .mobile-tab--active { color: var(--electric); }
-    .mobile-tab--active svg { stroke: var(--electric); }
+    .mobile-action-bar .action-row {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .mobile-action-bar .btn {
+      flex: 1;
+      justify-content: center;
+      font-size: 0.7rem !important;
+      padding: 0.38rem 0.4rem !important;
+    }
+    .mobile-action-bar svg {
+      width: 11px !important;
+      height: 11px !important;
+      margin-right: 0.25rem !important;
+    }
+
+    /* ── File tree fills remaining space ── */
+    .filetree {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+      border-right: none;
+      border-bottom: none;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .filetree__actions { display: none !important; }
+    .filetree__list {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    /* ── Code view: full screen overlay, hidden until file selected ── */
+    .codeview {
+      position: fixed;
+      inset: 0;
+      top: var(--nav-h);
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      background: var(--void);
+    }
+    .codeview.mobile-code-open {
+      display: flex;
+    }
+
+    /* ── Back button in code toolbar ── */
+    .mobile-back-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: none;
+      border: none;
+      color: var(--electric);
+      font-size: 0.78rem;
+      font-family: var(--font-code);
+      cursor: pointer;
+      padding: 0;
+      flex-shrink: 0;
+      margin-right: 0.75rem;
+    }
+    .mobile-back-btn svg { width: 14px; height: 14px; }
+
+    /* Hide old tab elements */
+    .mobile-tabs { display: none !important; }
+    .mobile-actions-panel { display: none !important; }
   }
-  
+
   /* ── File tree ──────────────────────────────────────────── */
   .filetree { border-right: 1px solid var(--border); overflow-y: auto; background: var(--deep); display: flex; flex-direction: column; }
   .filetree__header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -158,7 +196,6 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
-
 {% endblock %}
 
 {% block body %}
@@ -177,6 +214,61 @@
 
 <!-- Viewer -->
 <div class="viewer">
+
+  <!-- ── Mobile Action Bar (sticky top, mobile only) ── -->
+  <div class="mobile-action-bar" id="mobile-action-bar">
+
+    <!-- Row 1: Iterate + Deploy + Preview -->
+    <div class="action-row">
+      <button class="btn btn-primary btn-sm" onclick="openIterateModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Iterate
+      </button>
+      <a id="mob-deploy-btn" href="#" class="btn btn-primary btn-sm" style="text-decoration:none;display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Deploy
+      </a>
+      <a id="mob-preview-btn" href="#" class="btn btn-ghost btn-sm" style="text-decoration:none;display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Preview
+      </a>
+    </div>
+
+    <!-- Row 2: Export + Copy + GitHub -->
+    <div class="action-row">
+      <button class="btn btn-ghost btn-sm" onclick="exportZip()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="copyCurrentFile()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy
+      </button>
+      <button id="mob-push-btn" onclick="openPushModal()" class="btn btn-sm" style="display:none;background:rgba(99,102,241,0.1);border-color:var(--electric);color:var(--electric)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub
+      </button>
+      <a id="mob-gh-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none;text-decoration:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub
+      </a>
+      <button class="btn btn-sm" style="color:var(--plasma);border-color:rgba(255,61,107,0.25);background:rgba(255,61,107,0.06)" onclick="toggleDeleteConfirm()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Delete
+      </button>
+    </div>
+
+    <!-- Mobile delete confirm -->
+    <div class="delete-confirm" id="mobile-delete-confirm">
+      <p style="font-size:0.78rem;color:var(--plasma);margin-bottom:0.65rem;font-weight:600">⚠ This cannot be undone.</p>
+      <p style="font-size:0.74rem;color:var(--ghost);margin-bottom:0.75rem">All generated files will be permanently deleted.</p>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-sm" style="flex:1;justify-content:center;background:var(--plasma);color:#fff;border-color:var(--plasma)" onclick="deleteProject()">Yes, delete</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="toggleDeleteConfirm()">Cancel</button>
+      </div>
+    </div>
+
+  </div>
 
   <!-- ── File Tree ── -->
   <div class="filetree">
@@ -214,16 +306,14 @@
       </div>
     </div>
 
-    <!-- Action buttons -->
+    <!-- Action buttons (desktop only) -->
     <div class="filetree__actions">
 
-      <!-- Iterate -->
       <button class="btn btn-primary btn-sm" style="justify-content:center;width:100%" onclick="openIterateModal()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.35rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         Iterate Project
       </button>
 
-      <!-- Deploy + Preview (shown when complete) -->
       <div id="deploy-preview-row" style="display:none;flex-direction:column;gap:.4rem">
         <a id="deploy-btn" href="#" class="btn btn-primary btn-sm" style="justify-content:center;width:100%;text-decoration:none">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -246,7 +336,6 @@
         </button>
       </div>
 
-      <!-- Push to GitHub (complete but not yet pushed) -->
       <div id="github-push-row" style="display:none">
         <button onclick="openPushModal()" class="btn btn-sm" style="width:100%;justify-content:center;background:rgba(99,102,241,0.1);border-color:var(--electric);color:var(--electric)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -254,7 +343,6 @@
         </button>
       </div>
 
-      <!-- Open on GitHub (already pushed) -->
       <div id="github-link-row" style="display:none">
         <a id="github-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;text-decoration:none">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -262,13 +350,11 @@
         </a>
       </div>
 
-      <!-- Export progress -->
       <div class="export-progress" id="export-progress">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--electric)" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         <span id="export-progress-text">Building zip…</span>
       </div>
 
-      <!-- Delete -->
       <div style="border-top:1px solid var(--border);padding-top:0.5rem;margin-top:0.1rem">
         <button class="btn btn-sm" style="width:100%;justify-content:center;color:var(--plasma);border-color:rgba(255,61,107,0.25);background:rgba(255,61,107,0.06)" onclick="toggleDeleteConfirm()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -286,36 +372,18 @@
 
     </div>
   </div>
-  
-  <!-- ── Mobile Bottom Tabs (only shown on mobile) ── -->
-  <nav class="mobile-tabs" id="mobile-tabs">
-    <button class="mobile-tab mobile-tab--active" id="tab-files" onclick="switchMobileTab('files')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-        <polyline points="13 2 13 9 20 9"/>
-      </svg>
-      Files
-    </button>
-    <button class="mobile-tab" id="tab-code" onclick="switchMobileTab('code')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="16 18 22 12 16 6"/>
-        <polyline points="8 6 2 12 8 18"/>
-      </svg>
-      Code
-    </button>
-    <button class="mobile-tab" id="tab-actions" onclick="switchMobileTab('actions')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
-      </svg>
-      Actions
-    </button>
-  </nav>
 
   <!-- ── Code Viewer ── -->
   <div class="codeview">
     <div class="codeview__tabs" id="tabs-bar"></div>
     <div class="codeview__toolbar" id="toolbar" style="display:none">
+      <!-- Mobile back button -->
+      <button class="mobile-back-btn" onclick="closeMobileCode()" id="mobile-back-btn" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        Files
+      </button>
       <span class="codeview__filepath" id="current-filepath"></span>
       <div class="codeview__toolbar-actions">
         <button class="btn btn-ghost btn-sm" id="copy-btn" onclick="copyCurrentFile()">
@@ -332,66 +400,6 @@
       <div class="codeview__empty">
         <div class="codeview__empty-icon">📂</div>
         <p style="font-size:0.9rem;color:var(--ghost)">Select a file from the tree</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Mobile Actions Panel (Actions tab content) ── -->
-<div class="mobile-actions-panel" id="mobile-actions-panel">
-
-  <button class="btn btn-primary btn-sm" style="justify-content:center;width:100%" onclick="openIterateModal()">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.35rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-    Iterate Project
-  </button>
-
-  <div id="mobile-deploy-preview-row" style="display:none;flex-direction:column;gap:.4rem">
-    <a id="mobile-deploy-btn" href="#" class="btn btn-primary btn-sm" style="justify-content:center;width:100%;text-decoration:none">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-      Deploy App
-    </a>
-    <a id="mobile-preview-btn" href="#" class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;text-decoration:none">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-      Preview
-    </a>
-  </div>
-
-  <div class="action-row">
-    <button class="btn btn-ghost btn-sm" onclick="exportZip()" style="flex:1;justify-content:center">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export .zip
-    </button>
-    <button class="btn btn-ghost btn-sm" onclick="copyCurrentFile()" style="flex:1;justify-content:center">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      Copy
-    </button>
-  </div>
-
-  <div id="mobile-github-push-row" style="display:none">
-    <button onclick="openPushModal()" class="btn btn-sm" style="width:100%;justify-content:center;background:rgba(99,102,241,0.1);border-color:var(--electric);color:var(--electric)">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-      Push to GitHub
-    </button>
-  </div>
-
-  <div id="mobile-github-link-row" style="display:none">
-    <a id="mobile-github-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;text-decoration:none">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-      Open on GitHub
-    </a>
-  </div>
-
-  <div style="border-top:1px solid var(--border);padding-top:0.5rem;margin-top:0.25rem">
-    <button class="btn btn-sm" style="width:100%;justify-content:center;color:var(--plasma);border-color:rgba(255,61,107,0.25);background:rgba(255,61,107,0.06)" onclick="toggleDeleteConfirm()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-      Delete Project
-    </button>
-    <div class="delete-confirm" id="mobile-delete-confirm">
-      <p style="font-size:0.78rem;color:var(--plasma);margin-bottom:0.65rem;font-weight:600">⚠ This cannot be undone.</p>
-      <p style="font-size:0.74rem;color:var(--ghost);margin-bottom:0.75rem">All generated files will be permanently deleted.</p>
-      <div style="display:flex;gap:0.5rem">
-        <button class="btn btn-sm" style="flex:1;justify-content:center;background:var(--plasma);color:#fff;border-color:var(--plasma)" onclick="deleteProject()">Yes, delete</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="toggleDeleteConfirm()">Cancel</button>
       </div>
     </div>
   </div>
@@ -426,98 +434,6 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════
-     UPGRADE MODAL
-     ═══════════════════════════════════════════ -->
-<div id="upgrade-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:1.5rem;overflow-y:auto" onclick="if(event.target===this)closeUpgradeModal()">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:720px;overflow:hidden">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.5rem;border-bottom:1px solid var(--border)">
-      <div>
-        <h2 style="font-family:var(--font-display);font-size:1.3rem;font-weight:800;margin-bottom:0.2rem">Upgrade ChisCode</h2>
-        <p style="font-size:0.82rem;color:var(--ghost)">Unlock more generations, higher limits, and priority access.</p>
-      </div>
-      <button onclick="closeUpgradeModal()" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.5rem;line-height:1;padding:0.2rem">×</button>
-    </div>
-    <div style="padding:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
-      <div class="plan-card" id="plan-free">
-        <div class="plan-card__name" style="color:var(--ghost)">Free</div>
-        <div class="plan-card__price">$0<span>/mo</span></div>
-        <div style="height:1px;background:var(--border);margin:0.75rem 0"></div>
-        <div class="plan-card__feature">5 generations/day</div>
-        <div class="plan-card__feature">GitHub push</div>
-        <div class="plan-card__feature">Community support</div>
-        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:1rem" disabled>Current Plan</button>
-      </div>
-      <div class="plan-card" id="plan-basic">
-        <div class="plan-card__name" style="color:var(--electric)">Basic</div>
-        <div class="plan-card__price">$9<span>/mo</span></div>
-        <div style="height:1px;background:var(--border);margin:0.75rem 0"></div>
-        <div class="plan-card__feature">100 generations/day</div>
-        <div class="plan-card__feature">GitHub push + PRs</div>
-        <div class="plan-card__feature">Project history</div>
-        <div class="plan-card__feature">Email support</div>
-        <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:rgba(0,229,255,0.1);border-color:var(--electric);color:var(--electric)" onclick="startUpgrade('basic')">Upgrade to Basic</button>
-      </div>
-      <div class="plan-card featured" id="plan-pro">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.1rem">
-          <div class="plan-card__name" style="color:var(--neon)">Pro</div>
-          <span style="font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;padding:0.2rem 0.5rem;background:var(--neon);color:var(--void);border-radius:4px">Most Popular</span>
-        </div>
-        <div class="plan-card__price">$29<span>/mo</span></div>
-        <div style="height:1px;background:rgba(57,255,20,0.2);margin:0.75rem 0"></div>
-        <div class="plan-card__feature">1000 generations/day</div>
-        <div class="plan-card__feature">All frameworks + MCP</div>
-        <div class="plan-card__feature">Version history</div>
-        <div class="plan-card__feature">Priority generation</div>
-        <div class="plan-card__feature">Slack support</div>
-        <button class="btn btn-sm" style="width:100%;justify-content:center;margin-top:1rem;background:var(--neon);color:var(--void);border-color:var(--neon);font-weight:800" onclick="startUpgrade('pro')">Upgrade to Pro</button>
-      </div>
-    </div>
-    <div style="padding:0 1.5rem 1.25rem;font-size:0.75rem;color:var(--muted);text-align:center">
-      All plans include a 7-day free trial. Cancel anytime. Payments via Stripe.
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════
-     ITERATE MODAL
-     ═══════════════════════════════════════════ -->
-<div id="iterate-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)this.style.display='none'">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;overflow:hidden">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border)">
-      <h3 style="font-family:var(--font-display);font-size:1rem;font-weight:700">Iterate Project</h3>
-      <button onclick="document.getElementById('iterate-modal').style.display='none'" style="background:none;border:none;color:var(--ghost);cursor:pointer;font-size:1.4rem;line-height:1">×</button>
-    </div>
-    <div style="padding:1.5rem;display:flex;flex-direction:column;gap:1rem">
-      <div class="form-group">
-        <label class="form-label">What should I change or improve?</label>
-        <textarea id="iterate-prompt" class="form-input" rows="4" placeholder="E.g. Add a dark mode toggle, fix login validation, add loading spinners…" style="min-height:120px;resize:vertical"></textarea>
-      </div>
-      <div id="iterate-log" style="display:none" class="terminal">
-        <div class="terminal__header">
-          <div class="terminal__dot" style="background:#FF5F57"></div>
-          <div class="terminal__dot" style="background:#FEBC2E"></div>
-          <div class="terminal__dot" style="background:#28C840"></div>
-          <span style="margin-left:0.5rem;font-size:0.72rem;color:var(--ghost)">iteration log</span>
-        </div>
-        <div id="iterate-log-body" class="terminal__body" style="max-height:180px;overflow-y:auto">
-          <span class="terminal__cursor"></span>
-        </div>
-      </div>
-      <div id="iterate-pr-result" style="display:none;background:rgba(0,255,136,0.06);border:1px solid var(--neon);border-radius:8px;padding:1rem">
-        <div style="font-size:0.85rem;font-weight:700;color:var(--neon);margin-bottom:0.5rem">✅ Pull Request opened</div>
-        <a id="iterate-pr-link" href="#" target="_blank" class="btn btn-primary btn-sm">View PR on GitHub →</a>
-      </div>
-      <div id="iterate-error" style="display:none;color:var(--plasma);font-size:0.8rem;padding:0.6rem;background:rgba(255,61,107,0.08);border-radius:6px;border:1px solid rgba(255,61,107,0.2)"></div>
-      <button id="iterate-btn" class="btn btn-primary" style="justify-content:center" onclick="submitIterate()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        Run Iteration
-      </button>
-    </div>
-  </div>
-</div>
-
-{% endblock %}
 
 {% block scripts %}
 <script>
