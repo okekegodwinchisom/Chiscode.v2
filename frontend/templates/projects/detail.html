@@ -623,22 +623,21 @@ function renderCode(filepath) {
     if (toolbar) toolbar.style.display = 'flex';
     if (filepathEl) filepathEl.textContent = filepath;
     
+    // Generate line numbers
+    const lines = content.split('\n');
+    const lineNums = lines.map((_, i) => i + 1).join('\n');
+    
     const codeBody = document.getElementById('code-body');
     if (!codeBody) return;
     
-    // Generate code with line numbers inline
-    const lines = content.split('\n');
-    
-    // Create HTML with line numbers directly attached to each line
-    const codeWithLines = lines.map((line, index) => {
-        const lineNumber = (index + 1).toString().padStart(3, ' ');
-        const escapedLine = escHtml(line);
-        return `<div class="code-line"><span class="line-number">${lineNumber}</span><span class="line-content">${escapedLine || ' '}</span></div>`;
-    }).join('');
-    
     codeBody.innerHTML = `
-        <div class="code-container">
-            <pre class="code-block"><code class="language-${lang}">${codeWithLines}</code></pre>
+        <div class="line-numbers-wrapper" style="display: flex; height: 100%; overflow: auto;">
+            <div class="line-numbers" style="padding: 1rem 0.75rem; background: var(--void); text-align: right; user-select: none; font-family: monospace; font-size: 0.85rem; color: var(--muted); border-right: 1px solid var(--border);">
+                ${escHtml(lineNums)}
+            </div>
+            <div class="line-numbers-code" style="flex: 1; overflow: auto;">
+                <pre><code class="language-${lang}">${escHtml(content)}</code></pre>
+            </div>
         </div>
     `;
     
