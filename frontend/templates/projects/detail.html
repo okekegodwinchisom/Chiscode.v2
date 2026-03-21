@@ -1108,10 +1108,11 @@ function switchMobileTab(tab) {
 function initMobileTabs() {
   if (isMobile()) {
     document.getElementById('mobile-tabs').style.display = 'flex';
-    switchMobileTab('files'); // start on files tab
+    document.querySelector('.filetree__actions').style.display = 'none'; // ← add this
+    switchMobileTab('files');
   } else {
     document.getElementById('mobile-tabs').style.display = 'none';
-    // Ensure desktop shows both panels
+    document.querySelector('.filetree__actions').style.display = 'flex'; // ← and this
     document.querySelector('.filetree').classList.remove('mobile-active');
     document.querySelector('.codeview').classList.remove('mobile-active');
   }
