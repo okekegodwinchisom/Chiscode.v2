@@ -639,8 +639,36 @@ async function loadProject() {
   renderFileTree(fileTree);
   const files = Object.keys(fileTree);
   if (files.length) openFile(files[0]);
+
+  if (isMobile()) {
+    // Mirror deploy/preview row
+    const mobileDeployRow = document.getElementById('mobile-deploy-preview-row');
+    if (mobileDeployRow && p.status === 'complete') {
+      mobileDeployRow.style.display = 'flex';
+      document.getElementById('mobile-deploy-btn').href  = `/projects/${projectId}/deploy`;
+      document.getElementById('mobile-preview-btn').href = `/projects/${projectId}/deploy?tab=preview`;
+    }
+
+    // Mirror GitHub rows
+    const mobilePushRow = document.getElementById('mobile-github-push-row');
+    const mobileGhRow   = document.getElementById('mobile-github-link-row');
+    const mobileGhLink  = document.getElementById('mobile-github-link');
+
+    if (p.github_repo_url) {
+      mobileGhLink.href             = p.github_repo_url;
+      mobileGhRow.style.display     = 'block';
+      mobilePushRow.style.display   = 'none';
+    } else if (p.status === 'complete') {
+      mobilePushRow.style.display   = 'block';
+      mobileGhRow.style.display     = 'none';
+    }
+
+    // Init tabs after data is loaded
+    initMobileTabs();
+  }
 }
 
+  
 function renderFileTree(tree) {
     const files = Object.keys(tree).sort();
     const dirs = {};
