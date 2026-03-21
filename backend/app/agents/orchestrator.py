@@ -385,9 +385,43 @@ async def node_iterate(state: ProjectState) -> ProjectState:
 
     await _push(state, "status", status="generating", message="🔄 Planning changes...")
 
-    # Ask Codestral which files need changing
+    # ── Load project doc to get GitHub fields and file tree ──
     try:
-        file_tree = state.get("file_tree", {})
+        project = await _call_tool("project_read", {
+            "project_id": state["project_id"]
+        })
+        if not state.get("github_owner"):
+            state["github_owner"] = project.get("github_owner", "")
+        if not state.get("github_repo_name"):
+            state["github_repo_name"] = project.get("github_repo_name", "")
+        if not state.get("file_tree"):
+            state["file_tree"] = project.get("file_tree", {})
+        if not state.get("spec"):
+            state["spec"] = project.get("spec", {})
+        if not state.get("stack"):
+            state["stack"] = project.get("stack", {})
+    except Exception as exc:
+        await _push(state, "error", message=f"Failed to load project: {exc}")
+        state["error"]  = str(exc)
+        state["status"] = "failed"
+        return state
+
+    # ── Validate GitHub fields before proceeding ──
+    if not state.get("github_token"):
+        await _push(state, "error", message="GitHub token not found — connect GitHub first")
+        state["error"]  = "github_token missing"
+        state["status"] = "failed"
+        return state
+
+    if not state.get("github_owner") or not state.get("github_repo_name"):
+        await _push(state, "error", message="No GitHub repo linked — push to GitHub first before iterating")
+        state["error"]  = "github_owner or github_repo_name missing"
+        state["status"] = "failed"
+        return state
+
+    # ── Ask Codestral which files need changing ──
+    file_tree = state.get("file_tree", {})
+    try:
         plan_result = await _call_tool("code_generator", {
             "filename": "_plan.json",
             "system_prompt": (
@@ -400,10 +434,10 @@ async def node_iterate(state: ProjectState) -> ProjectState:
                 f"Return JSON with files that need updating."
             ),
         })
-        raw           = plan_result.get("content", "")
+        raw             = plan_result.get("content", "")
         files_to_change = json.loads(raw).get("files", list(file_tree.keys())[:3])
     except Exception:
-        files_to_change = list(state.get("file_tree", {}).keys())[:3]
+        files_to_change = list(file_tree.keys())[:3]
 
     await _push(state, "log", message=f"📋 Files to update: {', '.join(files_to_change)}")
 
@@ -457,7 +491,7 @@ async def node_iterate(state: ProjectState) -> ProjectState:
         await _push(state, "error", message="No files were updated")
         return state
 
-    # Quality check on changed files
+    # ── Quality check on changed files ──
     qc = await _call_tool("quality_checker", {
         "file_tree": changed_files,
         "file_plan": list(changed_files.keys()),
@@ -465,14 +499,14 @@ async def node_iterate(state: ProjectState) -> ProjectState:
     if qc.get("issues"):
         await _push(state, "issues", issues=qc["issues"])
 
-    # Push PR
+    # ── Push PR ──
     await _push(state, "status", status="committing", message="Opening Pull Request...")
     branch_name = f"chiscode/iteration-v{version}"
     try:
         result = await _call_tool("github_pr", {
             "github_token":   state["github_token"],
-            "owner":          state.get("github_owner", ""),
-            "repo":           state.get("github_repo_name", ""),
+            "owner":          state["github_owner"],
+            "repo":           state["github_repo_name"],
             "branch_name":    branch_name,
             "file_tree":      changed_files,
             "commit_message": f"feat: {iterate_prompt[:72]}",
@@ -490,7 +524,11 @@ async def node_iterate(state: ProjectState) -> ProjectState:
 
         await _call_tool("project_write", {
             "project_id": state["project_id"],
-            "fields": {"status": "awaiting_confirmation", "file_tree": file_tree},
+            "fields": {
+                "status":          "awaiting_confirmation",
+                "file_tree":       file_tree,
+                "current_version": version,
+            },
         })
         await _push(state, "github_done",
                     pr_url=result["pr_url"], commit_sha=result["commit_sha"],
