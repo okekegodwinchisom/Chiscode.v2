@@ -365,6 +365,67 @@
 
 </div>
 
+<!-- ── Mobile Action Bar (below file list, mobile only) ── -->
+<div class="mobile-action-bar" id="mobile-action-bar">
+
+  <button class="btn btn-primary btn-sm" style="justify-content:center;width:100%" onclick="openIterateModal()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.35rem"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    Iterate Project
+  </button>
+
+  <div id="mob-deploy-preview-row" style="display:none;flex-direction:column;gap:.4rem">
+    <a id="mob-deploy-btn" href="#" class="btn btn-primary btn-sm" style="justify-content:center;width:100%;text-decoration:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Deploy App
+    </a>
+    <a id="mob-preview-btn" href="#" class="btn btn-ghost btn-sm" style="justify-content:center;width:100%;text-decoration:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:.35rem"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Preview
+    </a>
+  </div>
+
+  <div class="action-row">
+    <button class="btn btn-ghost btn-sm" onclick="exportZip()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export .zip
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="copyCurrentFile()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy
+    </button>
+  </div>
+
+  <div id="mob-push-btn-row" style="display:none">
+    <button onclick="openPushModal()" class="btn btn-sm" style="width:100%;justify-content:center;background:rgba(99,102,241,0.1);border-color:var(--electric);color:var(--electric)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+      Push to GitHub
+    </button>
+  </div>
+
+  <div id="mob-gh-link-row" style="display:none">
+    <a id="mob-gh-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;text-decoration:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:0.3rem"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+      Open on GitHub
+    </a>
+  </div>
+
+  <div style="border-top:1px solid var(--border);padding-top:0.5rem;margin-top:0.1rem">
+    <button class="btn btn-sm" style="width:100%;justify-content:center;color:var(--plasma);border-color:rgba(255,61,107,0.25);background:rgba(255,61,107,0.06)" onclick="toggleDeleteConfirm()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:0.3rem"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      Delete Project
+    </button>
+    <div class="delete-confirm" id="mobile-delete-confirm">
+      <p style="font-size:0.78rem;color:var(--plasma);margin-bottom:0.65rem;font-weight:600">⚠ This cannot be undone.</p>
+      <p style="font-size:0.74rem;color:var(--ghost);margin-bottom:0.75rem">All generated files will be permanently deleted.</p>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-sm" style="flex:1;justify-content:center;background:var(--plasma);color:#fff;border-color:var(--plasma)" onclick="deleteProject()">Yes, delete</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="toggleDeleteConfirm()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
 <!-- ═══════════════════════════════════════════
      PUSH TO GITHUB MODAL
      ═══════════════════════════════════════════ -->
