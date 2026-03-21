@@ -7,36 +7,9 @@
 <!-- JSZip for real .zip export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
 <style>
-  /* ── Layout ─────────────────────────────────────────────── */
-.viewer { 
-  display: grid; 
-  grid-template-columns: 272px 1fr; 
-  height: calc(100vh - var(--nav-h)); 
-  overflow: hidden; 
-}
-
-@media (max-width: 768px) { 
-  .viewer { 
-    grid-template-columns: 1fr; 
-    grid-template-rows: auto 1fr; 
-    height: calc(100vh - var(--nav-h));
-    overflow: hidden;
-  }
-  .filetree {
-    max-height: 45vh;
-    overflow-y: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .codeview {
-    height: 55vh;
-    overflow: hidden;
-  }
-  .filetree__list {
-    max-height: calc(45vh - 120px);
-    overflow-y: auto;
-  }
-}
+//* ── Layout ─────────────────────────────────────────────── */
+  .viewer { display: grid; grid-template-columns: 272px 1fr; height: calc(100vh - var(--nav-h)); overflow: hidden; }
+  @media (max-width: 768px) { .viewer { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
   /* ── File tree ──────────────────────────────────────────── */
   .filetree { border-right: 1px solid var(--border); overflow-y: auto; background: var(--deep); display: flex; flex-direction: column; }
   .filetree__header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
