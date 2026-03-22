@@ -511,10 +511,12 @@ async def node_iterate(state: ProjectState) -> ProjectState:
     try:
         from app.services.github_service import GitHubService
         gh = GitHubService(state["github_token"])
+
+        # Push full file_tree so new files are included
         await gh.push_files(
             owner=state["github_owner"],
             repo=state["github_repo_name"],
-            file_tree=changed_files,
+            file_tree=file_tree,          # ← full tree, not just changed_files
             commit_message=f"feat: {iterate_prompt[:72]}",
             branch="main",
         )
@@ -526,7 +528,7 @@ async def node_iterate(state: ProjectState) -> ProjectState:
             "project_id": state["project_id"],
             "fields": {
                 "status":          "complete",
-                "file_tree":       file_tree,
+                "file_tree":       file_tree,  # ← full tree saved to MongoDB
                 "current_version": version,
             },
         })
@@ -535,7 +537,7 @@ async def node_iterate(state: ProjectState) -> ProjectState:
         await _push(state, "github_done",
                     commit_sha="",
                     repo_url=repo_url,
-                    message=f"✅ {len(changed_files)} files committed to main")
+                    message=f"✅ {len(file_tree)} files committed to main ({len(changed_files)} updated)")
 
     except Exception as exc:
         state["error"] = str(exc)
