@@ -425,24 +425,28 @@ async def node_iterate(state: ProjectState) -> ProjectState:
         plan_result = await _call_tool("code_generator", {
             "filename": "_plan.json",
             "system_prompt": (
-                "You are a code editor. Analyze the change request and list:\n"
-                "1. Existing files that need to be modified\n"
-                "2. New files that need to be created\n"
-                "Return ONLY valid JSON: {\"files\": [\"path1\", \"path2\"]}\n"
-                "Include both existing and new file paths in the same list."
+                "You are a senior software engineer planning a code change.\n"
+                "When given a change request, think through it properly:\n"
+                "- Some changes only need existing files modified\n"
+                "- Some changes require brand new files to be created\n"
+                "- Some changes need both modifications AND new files\n"
+                "A feature like 'add authentication' needs new auth files, not just modifications.\n"
+                "A feature like 'fix a bug' usually only needs existing files modified.\n"
+                "Always return the COMPLETE list of files needed to properly implement the request.\n"
+                "Return ONLY valid JSON: {\"files\": [\"path1\", \"path2\"]}"
             ),
             "user_prompt": (
-                f"Existing files: {list(file_tree.keys())}\n"
+                f"Current project files:\n{chr(10).join(f'  - {f}' for f in file_tree.keys())}\n\n"
                 f"Change request: {iterate_prompt}\n\n"
-                f"Return JSON listing all files that need to be modified OR created "
-                f"to fulfill this request. Include new files if needed."
+                f"List every file that needs to be modified or created to fully implement this. "
+                f"Do not limit yourself to existing files — create new ones if the feature requires it."
             ),
         })
         raw             = plan_result.get("content", "")
         files_to_change = json.loads(raw).get("files", list(file_tree.keys())[:3])
     except Exception:
         files_to_change = list(file_tree.keys())[:3]
-
+        
     await _push(state, "log", message=f"📋 Files to update: {', '.join(files_to_change)}")
 
     spec       = state.get("spec", {})
