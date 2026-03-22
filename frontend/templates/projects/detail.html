@@ -950,8 +950,8 @@ async function submitIterate() {
         if (msg.event==='file')   addLog('✅ '+msg.filename,'complete');
         if (msg.event==='issues') (msg.issues||[]).forEach(i=>addLog('⚠ '+safeMsg(i)));
         if (msg.event==='github_done') {
-          addLog('🎉 PR opened!','complete');
-          document.getElementById('iterate-pr-link').href = msg.pr_url||'#';
+          addLog('✅ Committed to main!','complete');
+          document.getElementById('iterate-pr-link').href = msg.repo_url || '#';
           document.getElementById('iterate-pr-result').style.display='block';
           await loadProject();
         }
