@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     duckduckgo_max_results: int = 10
 
     # ── Rate Limits (requests/day) ───────────────────────────
-    rate_limit_free: int = 5
+    rate_limit_free: int = 8
     rate_limit_basic: int = 100
     rate_limit_pro: int = 1000
     rate_limit_yearly: int = 1000
