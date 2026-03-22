@@ -29,7 +29,8 @@ dependencies = [
     "jinja2==3.1.4",
     "aiofiles==24.1.0",
     "websockets==13.1",
-
+    "playwright==1.44.0",
+    
     # AI / LLM Orchestration
     "langchain==0.3.7",
     "langchain-core==0.3.19",
