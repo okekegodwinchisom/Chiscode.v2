@@ -458,4 +458,3 @@ def _build_card_data(
         "directories": analysis["directories"][:10],
         "primary_lang": analysis["primary_lang"],
     }
-}
