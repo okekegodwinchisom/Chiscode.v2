@@ -30,16 +30,16 @@ from app.services.preview_service import (
 logger = get_logger(__name__)
 router = APIRouter(tags=["deploy"])
 
+
 # ── Deploy request ─────────────────────────────────────────────
 
 class DeployRequest(BaseModel):
-    platform:        str
-    # Optional platform tokens (user provides these in UI)
-    vercel_token:    Optional[str] = None
-    netlify_token:   Optional[str] = None
-    render_token:    Optional[str] = None
-    cf_api_token:    Optional[str] = None
-    cf_account_id:   Optional[str] = None
+    platform:      str
+    vercel_token:  Optional[str] = None
+    netlify_token: Optional[str] = None
+    render_token:  Optional[str] = None
+    cf_api_token:  Optional[str] = None
+    cf_account_id: Optional[str] = None
 
 
 # ── Endpoints ──────────────────────────────────────────────────
@@ -60,7 +60,10 @@ async def deploy_endpoint(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
     if doc.get("status") != "complete":
-        raise HTTPException(status_code=400, detail="Project must be complete before deploying.")
+        raise HTTPException(
+            status_code=400,
+            detail="Project must be complete before deploying.",
+        )
 
     cfg = DeployConfig(
         platform=req.platform,
@@ -74,16 +77,15 @@ async def deploy_endpoint(
         render_token=req.render_token,
         cf_api_token=req.cf_api_token,
         cf_account_id=req.cf_account_id,
-        github_token=doc.get("github_token_encrypted"),   # retrieved from user record
+        github_token=doc.get("github_token_encrypted"),
         github_username=current_user.github_username,
     )
 
     async def stream():
-        # Track deploy in MongoDB
         await projects_collection().update_one(
             {"_id": ObjectId(project_id)},
             {"$push": {"deploy_log": {
-                "platform": req.platform,
+                "platform":   req.platform,
                 "started_at": __import__("datetime").datetime.utcnow().isoformat(),
             }}},
         )
@@ -91,7 +93,6 @@ async def deploy_endpoint(
         config_files: dict[str, str] = {}
 
         async for event in deploy_project(cfg):
-            # Save config files to project document
             if event.get("event") == "config_ready":
                 config_files.update(event.get("config_files", {}))
                 if config_files:
@@ -101,7 +102,6 @@ async def deploy_endpoint(
                         {"$set": {"file_tree": merged_tree}},
                     )
 
-            # Save deploy URL
             if event.get("event") == "deploy_done" and event.get("url"):
                 await projects_collection().update_one(
                     {"_id": ObjectId(project_id)},
@@ -110,9 +110,14 @@ async def deploy_endpoint(
 
             yield f"data: {json.dumps(event)}\n\n"
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"X-Accel-Buffering": "no",
-                                      "Cache-Control":     "no-cache"})
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control":     "no-cache",
+        },
+    )
 
 
 @router.post("/projects/{project_id}/preview")
@@ -122,6 +127,7 @@ async def create_preview(
 ):
     """Generate or refresh preview for a project."""
     from bson import ObjectId
+    from app.core.config import settings
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -135,34 +141,65 @@ async def create_preview(
         file_tree=doc.get("file_tree", {}),
         stack=doc.get("stack", {}),
         project_name=doc.get("name", ""),
+        base_url=settings.frontend_base_url,
     )
     return info.model_dump()
 
 
 @router.get("/preview/{project_id}", response_class=HTMLResponse)
 async def serve_preview(project_id: str):
-    """Serve the live preview HTML (no auth — token in URL not needed for iframe)."""
+    """
+    Serve the live preview HTML.
+    No auth required — iframe needs direct access.
+    Auto-generates preview if not yet stored.
+    """
     html = await get_preview_html(project_id)
+
+    # Auto-generate if not found in MongoDB
+    if not html:
+        try:
+            from bson import ObjectId
+            doc = await projects_collection().find_one(
+                {"_id": ObjectId(project_id)}
+            )
+            if doc:
+                logger.info("Auto-generating preview", project_id=project_id)
+                await generate_preview(
+                    project_id=project_id,
+                    file_tree=doc.get("file_tree", {}),
+                    stack=doc.get("stack", {}),
+                    project_name=doc.get("name", ""),
+                )
+                html = await get_preview_html(project_id)
+        except Exception as exc:
+            logger.warning("Auto-preview generation failed", error=str(exc))
+
     if not html:
         return HTMLResponse(
             content="""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"></head>
-<body style="background:#07090f;color:#6b7f95;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh">
-<div style="text-align:center"><p>Preview expired or not available.</p>
-<p style="font-size:.8rem">Generate a new preview from the project page.</p></div>
-</body></html>""",
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="background:#07090f;color:#6b7f95;font-family:monospace;
+             display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+  <div style="text-align:center">
+    <div style="font-size:2rem;margin-bottom:1rem">📭</div>
+    <p>Preview not available.</p>
+    <p style="font-size:.8rem">Click "Refresh Preview" to generate one.</p>
+  </div>
+</body>
+</html>""",
             status_code=404,
         )
 
     return HTMLResponse(
         content=html,
         headers={
+            # Permissive CSP — allows inline scripts/styles and CDN resources
+            # frame-ancestors * allows embedding in any iframe (needed for HF Spaces)
             "Content-Security-Policy": (
-                "default-src 'self' 'unsafe-inline' 'unsafe-eval' "
-                "https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com "
-                "https://fonts.gstatic.com data: blob:;"
+                "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; "
+                "frame-ancestors *;"
             ),
-            "X-Frame-Options": "SAMEORIGIN",
         },
     )
 
@@ -172,11 +209,13 @@ async def get_card(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
+    """Get preview card data for non-HTML projects."""
     card = await get_preview_card(project_id)
     if not card:
-        # Generate on the fly
         from bson import ObjectId
-        doc = await projects_collection().find_one({"_id": ObjectId(project_id)})
+        doc = await projects_collection().find_one(
+            {"_id": ObjectId(project_id)}
+        )
         if not doc:
             raise HTTPException(status_code=404, detail="Project not found.")
         info = await generate_preview(
@@ -195,8 +234,9 @@ async def get_deploy_configs(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
-    """Return all platform config files that have been generated for this project."""
+    """Return all platform config files generated for this project."""
     from bson import ObjectId
+
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
         "user_id": current_user.id,
@@ -204,12 +244,15 @@ async def get_deploy_configs(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    file_tree = doc.get("file_tree", {})
-    config_names = ("vercel.json", "netlify.toml", "render.yaml",
-                    "fly.toml", ".cloudflare", "Dockerfile")
+    file_tree    = doc.get("file_tree", {})
+    config_names = (
+        "vercel.json", "netlify.toml", "render.yaml",
+        "fly.toml", ".cloudflare", "Dockerfile",
+    )
     return {
-        "configs": {k: v for k, v in file_tree.items()
-                    if any(c in k for c in config_names)},
+        "configs": {
+            k: v for k, v in file_tree.items()
+            if any(c in k for c in config_names)
+        },
         "deploy_urls": doc.get("deploy_urls", {}),
     }
-    
