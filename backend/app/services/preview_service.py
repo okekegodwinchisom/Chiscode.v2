@@ -458,3 +458,24 @@ def _build_card_data(
         "directories": analysis["directories"][:10],
         "primary_lang": analysis["primary_lang"],
     }
+
+def inline_js(m: re.Match) -> str:
+    src = m.group(1)
+    if src.startswith("http") or src.startswith("//"):
+        return m.group(0)
+    base_dir = "/".join(entry.split("/")[:-1])
+    for candidate in [
+        src.lstrip("/"),
+        f"{base_dir}/{src}".lstrip("/"),
+        src.lstrip("./"),
+    ]:
+        if candidate in file_tree:
+            # Wrap in DOMContentLoaded to ensure DOM is ready
+            return (
+                f"<script>\n"
+                f"document.addEventListener('DOMContentLoaded', function() {{\n"
+                f"{file_tree[candidate]}\n"
+                f"}});\n"
+                f"</script>"
+            )
+    return m.group(0)
