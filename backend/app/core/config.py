@@ -82,9 +82,12 @@ class Settings(BaseSettings):
     rate_limit_pro: int = 1000
     rate_limit_yearly: int = 1000
 
-    # ── Frontend ─────────────────────────────────────────────
-    frontend_base_url: str = "http://localhost:7860"
-
+    #____frontendbase____
+    frontend_base_url: str = Field(
+    default="https://godwin021-chiscode-v2.hf.space",
+    env="FRONTEND_BASE_URL",
+    )
+    
     @field_validator("allowed_hosts", mode="before")
     @classmethod
     def parse_allowed_hosts(cls, v: object) -> str:
