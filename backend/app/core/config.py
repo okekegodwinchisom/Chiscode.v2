@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     rate_limit_pro: int = 1000
     rate_limit_yearly: int = 1000
 
+    # ── Daytona ──────────────────────────────────────────────────
+    daytona_api_key: str = Field(default="", env="DAYTONA_API_KEY")
+
     #____frontendbase____
     frontend_base_url: str = Field(
     default="https://godwin021-chiscode-v2.hf.space",
