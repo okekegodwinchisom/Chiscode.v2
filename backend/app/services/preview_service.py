@@ -171,11 +171,11 @@ async def generate_preview(
                     reason=pw_result.get("reason", "unknown"),
                 )
     else:
-        preview_html      = None
-        preview_type      = "card"
-        iframe_url        = None
-        card_data         = _build_card_data(analysis, project_name, stack)
-
+    preview_type = "card"
+    card_data    = _build_card_data(analysis, project_name, stack)
+    preview_html = _build_card_html(card_data, project_name, analysis)  # ← always build HTML
+    iframe_url   = f"/api/v1/preview/{project_id}"  # ← always set URL
+    
     # ── Store in MongoDB ──
     await get_db()["previews"].replace_one(
         {"project_id": project_id},
