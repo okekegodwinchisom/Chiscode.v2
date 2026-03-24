@@ -60,6 +60,7 @@ dependencies = [
 
     # HTTP Client
     "httpx[http2]==0.27.2",
+    "daytona-sdk>=0.22.0",
 
     # Resilience
     "tenacity==9.0.0",
