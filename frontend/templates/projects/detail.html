@@ -965,6 +965,25 @@ async function submitIterate() {
   btn.disabled=false; btn.textContent='Run Iteration';
 }
 
+async function loadPreviewUrl() {
+    try {
+        const res  = await apiFetch(`/projects/${projectId}/preview/live`);
+        const data = await res.json();
+
+        const iframe = document.getElementById('preview-iframe');
+        if (iframe) {
+            iframe.src = data.url;
+        }
+
+        const badge = document.getElementById('preview-type-badge');
+        if (badge) {
+            badge.textContent = data.type === 'live' ? '🟢 LIVE' : '📄 STATIC';
+        }
+    } catch (err) {
+        console.error('Preview load failed:', err);
+    }
+}
+  
 // ── Handle resize ─────────────────────────────────────────────
 window.addEventListener('resize', () => {
   if (!isMobile()) {
