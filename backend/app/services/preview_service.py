@@ -459,23 +459,174 @@ def _build_card_data(
         "primary_lang": analysis["primary_lang"],
     }
 
-def inline_js(m: re.Match) -> str:
-    src = m.group(1)
-    if src.startswith("http") or src.startswith("//"):
-        return m.group(0)
-    base_dir = "/".join(entry.split("/")[:-1])
-    for candidate in [
-        src.lstrip("/"),
-        f"{base_dir}/{src}".lstrip("/"),
-        src.lstrip("./"),
-    ]:
-        if candidate in file_tree:
-            # Wrap in DOMContentLoaded to ensure DOM is ready
-            return (
-                f"<script>\n"
-                f"document.addEventListener('DOMContentLoaded', function() {{\n"
-                f"{file_tree[candidate]}\n"
-                f"}});\n"
-                f"</script>"
-            )
-    return m.group(0)
+def _build_card_html(card_data: dict, project_name: str, analysis: dict) -> str:
+    """Build a rich HTML card for non-HTML projects (served in iframe)."""
+    stack    = card_data.get("stack", {})
+    stats    = card_data.get("stats", {})
+    langs    = card_data.get("languages", [])
+    features = card_data.get("features", [])
+    dirs     = card_data.get("directories", [])
+
+    stack_desc = " · ".join(filter(None, [
+        stack.get("frontend", ""),
+        stack.get("backend", ""),
+        stack.get("database", ""),
+    ]))
+
+    lang_pills = "".join(
+        f'<span class="pill">{l["name"]} <span class="dim">({l["files"]})</span></span>'
+        for l in langs
+    )
+    feature_pills = "".join(
+        f'<span class="pill green">{f}</span>'
+        for f in features
+    )
+    dir_list = "".join(
+        f'<div class="dir-item">📁 {d}/</div>'
+        for d in dirs[:8]
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{project_name}</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #07090f;
+      color: #eef4ff;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }}
+    .header {{
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #1e2d45;
+    }}
+    .icon {{ font-size: 2rem; }}
+    .title {{ font-size: 1.4rem; font-weight: 800; color: #00e5ff; }}
+    .stack {{ font-size: 0.8rem; color: #6b7f95; margin-top: 0.2rem; }}
+    .grid {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }}
+    .stat {{
+      background: #111827;
+      border: 1px solid #1e2d45;
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+    }}
+    .stat-val {{
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #00e5ff;
+    }}
+    .stat-label {{
+      font-size: 0.7rem;
+      color: #6b7f95;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.2rem;
+    }}
+    .section {{ margin-bottom: 1rem; }}
+    .section-title {{
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #6b7f95;
+      margin-bottom: 0.5rem;
+    }}
+    .pill {{
+      display: inline-block;
+      background: #1e2d45;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.75rem;
+      margin: 0.2rem;
+      color: #eef4ff;
+    }}
+    .pill.green {{ background: rgba(57,255,20,0.1); color: #39ff14; }}
+    .dim {{ color: #6b7f95; }}
+    .dir-item {{
+      font-size: 0.78rem;
+      color: #6b7f95;
+      padding: 0.2rem 0;
+      font-family: monospace;
+    }}
+    .badge {{
+      position: fixed;
+      top: 0; right: 0;
+      background: #07090f;
+      color: #00e5ff;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-bottom-left-radius: 6px;
+      border: 1px solid #1e2d45;
+      border-top: none;
+      border-right: none;
+    }}
+    .footer {{
+      margin-top: 1.5rem;
+      padding: 0.75rem;
+      background: #111827;
+      border: 1px solid #1e2d45;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #6b7f95;
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+  <div class="badge">ChisCode Preview · {project_name}</div>
+
+  <div class="header">
+    <div class="icon">🚀</div>
+    <div>
+      <div class="title">{project_name}</div>
+      <div class="stack">{stack_desc}</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stat">
+      <div class="stat-val">{stats.get('files', 0)}</div>
+      <div class="stat-label">Files</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{stats.get('lines', 0):,}</div>
+      <div class="stat-label">Lines</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{stats.get('directories', 0)}</div>
+      <div class="stat-label">Directories</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{analysis.get('primary_lang', '?')}</div>
+      <div class="stat-label">Primary Lang</div>
+    </div>
+  </div>
+
+  {"" if not lang_pills else f'<div class="section"><div class="section-title">Languages</div>{lang_pills}</div>'}
+  {"" if not feature_pills else f'<div class="section"><div class="section-title">Features</div>{feature_pills}</div>'}
+  {"" if not dir_list else f'<div class="section"><div class="section-title">Structure</div>{dir_list}</div>'}
+
+  <div class="footer">
+    This project requires a build step to run.<br>
+    <span style="color:#00e5ff">Export .zip</span> or
+    <span style="color:#39ff14">Push to GitHub</span> to deploy it.
+  </div>
+</body>
+</html>"""
+
