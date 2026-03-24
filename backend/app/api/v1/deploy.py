@@ -256,3 +256,41 @@ async def get_deploy_configs(
         },
         "deploy_urls": doc.get("deploy_urls", {}),
     }
+
+@router.get("/projects/{project_id}/preview/live")
+async def get_live_preview_url(
+    project_id:   str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """
+    Return the live Daytona preview URL if sandbox is still running,
+    otherwise fall back to the static HTML preview.
+    """
+    from bson import ObjectId
+    doc = await projects_collection().find_one({
+        "_id":     ObjectId(project_id),
+        "user_id": current_user.id,
+    })
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    # Check if Daytona sandbox is still alive
+    daytona_url          = doc.get("preview_url", "")
+    daytona_workspace_id = doc.get("daytona_workspace_id", "")
+
+    if daytona_url and daytona_workspace_id:
+        try:
+            from app.services.daytona_service import DaytonaService
+            daytona = DaytonaService()
+            status  = await daytona.get_sandbox_status(daytona_workspace_id)
+            if status.get("status") in ("running", "started"):
+                return {"url": daytona_url, "type": "live"}
+        except Exception:
+            pass
+
+    # Fall back to static preview
+    return {
+        "url":  f"/api/v1/preview/{project_id}",
+        "type": "static",
+    }
+    
