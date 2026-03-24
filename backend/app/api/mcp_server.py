@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 
-# ── Tool envelope ────────────────────────────────────────────────
+# ── Tool envelope ─────────────────────────────────────────────────
 
 class ToolRequest(BaseModel):
     params: dict[str, Any] = {}
@@ -54,7 +54,7 @@ def err(msg: str) -> ToolResponse:
     return ToolResponse(error=msg)
 
 
-# ── Tool registry (for discovery) ───────────────────────────────
+# ── Tool registry ─────────────────────────────────────────────────
 
 TOOL_REGISTRY = {
     "code_generator": {
@@ -70,16 +70,18 @@ TOOL_REGISTRY = {
         "params": ["file_tree", "file_plan"],
     },
     "file_scaffold": {
-        "description": "Generate a file plan list from a stack + spec",
+        "description": "Generate a complete file plan list from a stack + spec using LLM",
         "params": ["spec", "stack"],
     },
     "github_push": {
         "description": "Create GitHub repo and push all files",
-        "params": ["github_token", "repo_name", "description", "file_tree", "commit_message", "private"],
+        "params": ["github_token", "repo_name", "description", "file_tree",
+                   "commit_message", "private"],
     },
     "github_pr": {
         "description": "Push changed files to a branch and open a PR",
-        "params": ["github_token", "owner", "repo", "branch_name", "file_tree", "commit_message", "pr_title", "pr_body"],
+        "params": ["github_token", "owner", "repo", "branch_name", "file_tree",
+                   "commit_message", "pr_title", "pr_body"],
     },
     "project_read": {
         "description": "Read a project document from MongoDB",
@@ -101,6 +103,10 @@ TOOL_REGISTRY = {
         "description": "Parse a natural language app description into a structured spec",
         "params": ["prompt", "project_name"],
     },
+    "daytona_sandbox": {
+        "description": "Create a Daytona sandbox and return a live preview URL",
+        "params": ["project_id", "project_name", "file_tree", "stack"],
+    },
 }
 
 
@@ -120,7 +126,7 @@ async def tool_code_generator(req: ToolRequest):
     Generate a single file via Codestral.
     Returns { content: str, filename: str, chars: int }
     """
-    p = req.params
+    p             = req.params
     filename      = p.get("filename", "")
     system_prompt = p.get("system_prompt", "You are an expert developer.")
     user_prompt   = p.get("user_prompt", f"Generate file: {filename}")
@@ -137,7 +143,7 @@ async def tool_code_generator(req: ToolRequest):
             api_key=settings.codestral_api_key,
             base_url=settings.codestral_base_url,
             temperature=p.get("temperature", 0.2),
-            max_tokens=8192,
+            max_tokens=16384,  # ← bumped from 8192
         )
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
@@ -226,89 +232,136 @@ async def tool_quality_checker(req: ToolRequest):
             except Exception:
                 pass
 
-    if not any(p.lower() == "readme.md" for p in file_tree):
+    if not any(f.lower() == "readme.md" for f in file_tree):
         issues.append("README.md is missing")
 
-    return ok({"issues": issues, "passed": len(issues) == 0, "file_count": len(file_tree)})
-
+    return ok({
+        "issues":     issues,
+        "passed":     len(issues) == 0,
+        "file_count": len(file_tree),
+    })
 
 # ═══════════════════════════════════════════════════════════════
-# TOOL: file_scaffold
+# TOOL: file_scaffold  (LLM-based — no hardcoded templates)
 # ═══════════════════════════════════════════════════════════════
 
 @router.post("/tools/file_scaffold", response_model=ToolResponse)
 async def tool_file_scaffold(req: ToolRequest):
     """
     Generate the file plan (list of paths) for a given stack + spec.
-    Returns { files: [...] }
+    Uses LLM to produce a complete, correct file list for any stack.
+    Returns { files: [...], count: int }
     """
     p    = req.params
     spec = p.get("spec", {})
     stack = p.get("stack", {})
 
-    frontend = (stack.get("frontend") or "").lower()
-    backend  = (stack.get("backend")  or "").lower()
-    database = (stack.get("database") or "").lower()
-    extras   = [e.lower() for e in stack.get("extras", [])]
-    complexity = spec.get("complexity", "simple")
+    app_name    = spec.get("app_name", "my-app")
+    description = spec.get("description", "")
+    features    = spec.get("features", [])
+    auth        = spec.get("auth_required", False)
+    frontend    = stack.get("frontend", "")
+    backend     = stack.get("backend", "")
+    database    = stack.get("database", "")
+    extras      = stack.get("extras", [])
 
-    files = ["README.md"]
+    stack_desc = " + ".join(filter(None, [frontend, backend, database] + extras[:3]))
 
-    # Frontend
-    if "next.js" in frontend or "next" in frontend:
-        files += ["src/app/page.tsx", "src/app/layout.tsx",
-                  "src/components/ui/button.tsx", "package.json",
-                  "next.config.js", "tailwind.config.js", "tsconfig.json"]
-    elif "react" in frontend:
-        files += ["src/App.jsx", "src/main.jsx", "src/components/Layout.jsx",
-                  "src/index.css", "index.html", "package.json", "vite.config.js"]
-    elif "vue" in frontend or "nuxt" in frontend:
-        files += ["src/App.vue", "src/main.js", "package.json"]
-    elif "svelte" in frontend or "sveltekit" in frontend:
-        files += ["src/routes/+page.svelte", "src/routes/+layout.svelte",
-                  "package.json", "svelte.config.js"]
+    try:
+        from langchain_core.messages import HumanMessage
+        from langchain_mistralai import ChatMistralAI
+
+        llm = ChatMistralAI(
+            model=settings.codestral_model,
+            api_key=settings.codestral_api_key,
+            base_url=settings.codestral_base_url,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+
+        response = await llm.ainvoke([
+            HumanMessage(content=(
+                f"List every file path needed for this project as a JSON array.\n\n"
+                f"App: {app_name}\n"
+                f"Description: {description}\n"
+                f"Stack: {stack_desc}\n"
+                f"Features: {', '.join(features) if features else 'standard CRUD'}\n"
+                f"Auth required: {auth}\n"
+                f"Extra packages: {', '.join(extras) if extras else 'none'}\n\n"
+                f"The project must be production-ready and immediately runnable. "
+                f"Include all source files, configs, and root files the {stack_desc} "
+                f"stack requires. Return ONLY the JSON array. No explanation, no markdown."
+            )),
+        ])
+
+        raw   = _strip_fences(response.content).strip()
+        files = json.loads(raw)
+
+        if not isinstance(files, list):
+            raise ValueError("Response is not a JSON array")
+
+        # Sanitize
+        seen, unique = set(), []
+        for f in files:
+            if (
+                isinstance(f, str) and f.strip()
+                and not f.startswith("/")
+                and ".." not in f
+                and "node_modules" not in f
+                and f not in seen
+            ):
+                seen.add(f)
+                unique.append(f.strip())
+
+        logger.info("file_scaffold complete",
+                    app=app_name, stack=stack_desc, file_count=len(unique))
+
+        return ok({"files": unique, "count": len(unique)})
+
+    except json.JSONDecodeError as exc:
+        logger.warning("file_scaffold JSON parse failed — using fallback",
+                       error=str(exc))
+        return ok(_fallback_scaffold(frontend, backend, spec))
+
+    except Exception as exc:
+        return err(f"file_scaffold failed: {exc}")
+
+
+def _fallback_scaffold(frontend: str, backend: str, spec: dict) -> dict:
+    """Minimal hardcoded fallback if LLM scaffold fails."""
+    f   = frontend.lower()
+    b   = backend.lower()
+    files = ["README.md", ".env.example"]
+
+    if "svelte" in f:
+        files += ["package.json", "svelte.config.js", "vite.config.js",
+                  "src/routes/+page.svelte", "src/routes/+layout.svelte",
+                  "src/lib/stores/auth.js", "src/lib/utils/api.js", "src/app.html"]
+    elif "react" in f or "next" in f:
+        files += ["package.json", "tsconfig.json",
+                  "src/app/page.tsx", "src/app/layout.tsx",
+                  "src/components/Layout.tsx", "src/lib/api.ts"]
+    elif "vue" in f or "nuxt" in f:
+        files += ["package.json", "nuxt.config.ts",
+                  "pages/index.vue", "layouts/default.vue"]
     else:
-        # Vanilla HTML
         files += ["index.html", "css/style.css", "js/app.js"]
 
-    # Backend
-    if "fastapi" in backend or "python" in backend:
-        files += ["main.py", "requirements.txt"]
-        if complexity in ("moderate", "complex"):
-            files += ["app/routes/__init__.py", "app/models.py",
-                      "app/config.py", "app/database.py"]
-        if spec.get("auth_required"):
-            files.append("app/auth.py")
-    elif "express" in backend or "node" in backend:
-        files += ["server.js", "package.json", "routes/index.js"]
-        if complexity in ("moderate", "complex"):
-            files += ["middleware/auth.js", "models/index.js"]
-    elif "rust" in backend or "axum" in backend:
-        files += ["src/main.rs", "Cargo.toml"]
-        if complexity in ("moderate", "complex"):
-            files += ["src/routes.rs", "src/models.rs", "src/db.rs"]
-    elif "go" in backend or "gin" in backend:
-        files += ["main.go", "go.mod", "handlers/handlers.go"]
+    if "express" in b or "node" in b:
+        files += ["server.js", "middleware/auth.js",
+                  "routes/index.js", "models/User.js"]
+    elif "fastapi" in b or "python" in b:
+        files += ["main.py", "requirements.txt",
+                  "app/routes/__init__.py", "app/models.py",
+                  "app/database.py", "app/config.py"]
 
-    # Database
-    if "prisma" in extras or "prisma" in database:
-        files.append("prisma/schema.prisma")
-    if "alembic" in extras or "sqlalchemy" in backend:
-        files += ["alembic.ini", "migrations/env.py"]
-
-    # Config / infra
-    files.append(".env.example")
-    if complexity == "complex":
-        files += ["Dockerfile", "docker-compose.yml", ".github/workflows/ci.yml"]
-
-    # Deduplicate preserving order
     seen, unique = set(), []
     for f in files:
         if f not in seen:
             seen.add(f)
             unique.append(f)
 
-    return ok({"files": unique, "count": len(unique)})
+    return {"files": unique, "count": len(unique)}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -318,7 +371,7 @@ async def tool_file_scaffold(req: ToolRequest):
 @router.post("/tools/github_push", response_model=ToolResponse)
 async def tool_github_push(req: ToolRequest):
     """Create GitHub repo + push all files. Returns { repo_url, commit_sha, owner }"""
-    p = req.params
+    p              = req.params
     token          = p.get("github_token", "")
     repo_name      = p.get("repo_name", "")
     description    = p.get("description", "")
@@ -334,7 +387,7 @@ async def tool_github_push(req: ToolRequest):
         return err("file_tree is empty — nothing to push")
 
     try:
-        from app.services.github_service import GitHubService, GitHubError
+        from app.services.github_service import GitHubService
         gh     = GitHubService(token)
         result = await gh.create_repo_and_push(
             repo_name=repo_name,
@@ -355,7 +408,7 @@ async def tool_github_push(req: ToolRequest):
 @router.post("/tools/github_pr", response_model=ToolResponse)
 async def tool_github_pr(req: ToolRequest):
     """Push to feature branch + open PR. Returns { pr_url, commit_sha, branch }"""
-    p = req.params
+    p              = req.params
     token          = p.get("github_token", "")
     owner          = p.get("owner", "")
     repo           = p.get("repo", "")
@@ -397,7 +450,7 @@ async def tool_project_read(req: ToolRequest):
         doc = await projects_collection().find_one({"_id": ObjectId(project_id)})
         if not doc:
             return err(f"Project {project_id} not found")
-        doc["_id"] = str(doc["_id"])
+        doc["_id"]     = str(doc["_id"])
         doc["user_id"] = str(doc.get("user_id", ""))
         return ok(doc)
     except Exception as exc:
@@ -456,8 +509,7 @@ async def tool_project_log(req: ToolRequest):
 @router.post("/tools/search_web", response_model=ToolResponse)
 async def tool_search_web(req: ToolRequest):
     """
-    DuckDuckGo search — useful for agents to look up API docs,
-    package versions, or framework patterns before generating code.
+    DuckDuckGo search — returns top snippets.
     Returns { results: [{title, url, snippet}] }
     """
     p           = req.params
@@ -490,7 +542,7 @@ async def tool_search_web(req: ToolRequest):
 async def tool_analyze_prompt(req: ToolRequest):
     """
     Parse a natural language app description into a structured spec dict.
-    Returns { spec: {...}, file_plan: [...] }
+    Returns { spec: {...} }
     """
     p            = req.params
     prompt       = p.get("prompt", "")
@@ -507,7 +559,8 @@ async def tool_analyze_prompt(req: ToolRequest):
             model=settings.codestral_model,
             api_key=settings.codestral_api_key,
             base_url=settings.codestral_base_url,
-            temperature=0.1, max_tokens=2048,
+            temperature=0.1,
+            max_tokens=2048,
         )
         response = await llm.ainvoke([
             SystemMessage(content="""Analyze the app idea. Return ONLY valid JSON:
@@ -522,7 +575,10 @@ async def tool_analyze_prompt(req: ToolRequest):
   "mobile_responsive": true,
   "complexity": "simple|moderate|complex"
 }"""),
-            HumanMessage(content=f"App idea: {prompt}\nProject name hint: {project_name}"),
+            HumanMessage(content=(
+                f"App idea: {prompt}\n"
+                f"Project name hint: {project_name}"
+            )),
         ])
         raw  = _strip_fences(response.content)
         spec = json.loads(raw)
@@ -531,11 +587,45 @@ async def tool_analyze_prompt(req: ToolRequest):
         return err(f"analyze_prompt failed: {exc}")
 
 
-# ── Helper ───────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# TOOL: daytona_sandbox
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/tools/daytona_sandbox", response_model=ToolResponse)
+async def tool_daytona_sandbox(req: ToolRequest):
+    """
+    Create a Daytona sandbox, upload files, start the app.
+    Returns { workspace_id, preview_url, port }
+    """
+    p            = req.params
+    project_id   = p.get("project_id", "")
+    project_name = p.get("project_name", "chiscode-app")
+    file_tree    = p.get("file_tree", {})
+    stack        = p.get("stack", {})
+
+    if not project_id:
+        return err("project_id is required")
+    if not file_tree:
+        return err("file_tree is empty — nothing to sandbox")
+
+    try:
+        from app.services.daytona_service import DaytonaService
+        daytona = DaytonaService()
+        result  = await daytona.create_sandbox(
+            project_id=project_id,
+            project_name=project_name,
+            file_tree=file_tree,
+            stack=stack,
+        )
+        return ok(result)
+    except Exception as exc:
+        return err(f"daytona_sandbox failed: {exc}")
+
+
+# ── Helper ────────────────────────────────────────────────────────
 
 def _strip_fences(text: str) -> str:
     text = text.strip()
     text = re.sub(r"^```(?:\w+)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
-    return text.strip()
-    
+    return text.strip()   
