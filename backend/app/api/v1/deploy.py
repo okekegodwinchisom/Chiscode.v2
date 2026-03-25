@@ -125,7 +125,6 @@ async def create_preview(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
-    """Generate or refresh preview for a project."""
     from bson import ObjectId
     from app.core.config import settings
 
@@ -136,15 +135,47 @@ async def create_preview(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
 
+    file_tree    = doc.get("file_tree", {})
+    stack        = doc.get("stack", {})
+    project_name = doc.get("name", "app")
+
+    # ── Try Daytona first ─────────────────────────────────────
+    try:
+        from app.services.daytona_service import DaytonaService
+        daytona = DaytonaService()
+        sandbox = await daytona.create_sandbox(
+            project_id=project_id,
+            project_name=project_name,
+            file_tree=file_tree,
+            stack=stack,
+        )
+        # Save live URL to project
+        await projects_collection().update_one(
+            {"_id": ObjectId(project_id)},
+            {"$set": {
+                "preview_url":          sandbox["preview_url"],
+                "daytona_workspace_id": sandbox["workspace_id"],
+            }},
+        )
+        return {
+            "type":        "live",
+            "preview_url": sandbox["preview_url"],
+            "workspace_id": sandbox["workspace_id"],
+        }
+
+    except Exception as exc:
+        logger.warning("Daytona sandbox failed — falling back to static preview",
+                       error=str(exc))
+
+    # ── Fallback to static preview ────────────────────────────
     info = await generate_preview(
         project_id=project_id,
-        file_tree=doc.get("file_tree", {}),
-        stack=doc.get("stack", {}),
-        project_name=doc.get("name", ""),
+        file_tree=file_tree,
+        stack=stack,
+        project_name=project_name,
         base_url=settings.frontend_base_url,
     )
     return info.model_dump()
-
 
 @router.get("/preview/{project_id}", response_class=HTMLResponse)
 async def serve_preview(project_id: str):
