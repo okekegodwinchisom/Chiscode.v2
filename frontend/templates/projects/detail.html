@@ -965,22 +965,21 @@ async function submitIterate() {
   btn.disabled=false; btn.textContent='Run Iteration';
 }
 
-async function loadPreviewUrl() {
-    try {
-        const res  = await apiFetch(`/projects/${projectId}/preview/live`);
-        const data = await res.json();
+async function refreshPreview() {
+    const res  = await apiFetch(`/projects/${projectId}/preview`, { method: 'POST' });
+    const data = await res.json();
 
-        const iframe = document.getElementById('preview-iframe');
-        if (iframe) {
-            iframe.src = data.url;
-        }
+    const iframe = document.getElementById('preview-iframe');
+    if (!iframe) return;
 
-        const badge = document.getElementById('preview-type-badge');
-        if (badge) {
-            badge.textContent = data.type === 'live' ? '🟢 LIVE' : '📄 STATIC';
-        }
-    } catch (err) {
-        console.error('Preview load failed:', err);
+    if (data.type === 'live' && data.preview_url) {
+        // Daytona live URL — point iframe directly at it
+        iframe.src = data.preview_url;
+        document.getElementById('preview-type-badge').textContent = '🟢 LIVE';
+    } else {
+        // Static fallback
+        iframe.src = `/api/v1/preview/${projectId}?t=${Date.now()}`;
+        document.getElementById('preview-type-badge').textContent = '📄 STATIC';
     }
 }
   
