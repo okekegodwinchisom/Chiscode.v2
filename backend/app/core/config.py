@@ -84,7 +84,8 @@ class Settings(BaseSettings):
 
     # ── Daytona ──────────────────────────────────────────────────
     daytona_api_key: str = Field(default="", env="DAYTONA_API_KEY")
-
+    daytona_url: str = Field(default="https://app.daytona.io/api", env="DAYTONA_URL")
+    
     #____frontendbase____
     frontend_base_url: str = Field(
     default="https://godwin021-chiscode-v2.hf.space",
