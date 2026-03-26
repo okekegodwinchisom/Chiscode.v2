@@ -146,7 +146,12 @@ class DaytonaService:
 
         # ── Get preview URL ───────────────────────────────────
         try:
-            preview_url = sandbox.get_preview_link(port)
+            preview_link = sandbox.get_preview_link(port)
+            # Handle PortPreviewUrl object
+            if hasattr(preview_link, 'url'):
+                preview_url = preview_link.url
+            else:
+                preview_url = str(preview_link)
         except Exception:
             preview_url = f"https://proxy.app.daytona.io/{sandbox.id}/{port}"
 
