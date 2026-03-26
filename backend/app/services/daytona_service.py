@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 from app.core.config import settings
 from app.core.logging import get_logger
+from daytona import Daytona, DaytonaConfig
+
 
 logger = get_logger(__name__)
 
@@ -70,7 +72,6 @@ class DaytonaService:
         Create a Daytona sandbox, upload all files, start the app.
         Returns { workspace_id, preview_url, port }
         """
-        from daytona import CreateSandboxParams
 
         start_cmd, port = _detect_start_command(file_tree, stack)
 
