@@ -99,7 +99,7 @@ class DaytonaService:
         port:      int,
     ) -> dict:
         """Synchronous sandbox creation — runs in thread pool."""
-        from daytona import Daytona, DaytonaConfig, CreateSandboxParams
+        from daytona import Daytona, DaytonaConfig
 
         daytona = Daytona(DaytonaConfig(
             api_key=self.api_key,
@@ -107,8 +107,7 @@ class DaytonaService:
         ))
 
         # ── Create sandbox ────────────────────────────────────
-        sandbox = daytona.create(CreateSandboxParams(
-            language="python",
+            sandbox = daytona.create()
             auto_stop_interval=15,    # stop after 15 min inactivity
         ))
 
