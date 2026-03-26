@@ -399,13 +399,28 @@ function renderPreviewCard(card) {
 
 // Boot: auto-load preview if available
 (async () => {
+  // Check for existing live Daytona preview first
+  const liveRes = await apiFetch('/projects/'+projectId+'/preview/live');
+  if (liveRes?.ok) {
+    const liveData = await liveRes.json();
+    if (liveData?.url) {
+      document.getElementById('preview-placeholder').style.display = 'none';
+      document.getElementById('preview-container').style.display   = 'block';
+      const iframe = document.getElementById('preview-iframe');
+      iframe.src           = liveData.url;
+      iframe.style.display = 'block';
+      document.getElementById('preview-btn').textContent = 'Refresh Preview';
+      return;
+    }
+  }
+
+  // Fall back to card preview
   const res = await apiFetch('/projects/'+projectId+'/preview/card');
   if (res?.ok) {
     const card = await res.json();
     if (card && Object.keys(card).length) {
       document.getElementById('preview-placeholder').style.display = 'none';
       document.getElementById('preview-container').style.display   = 'block';
-      // Try live iframe first
       const iframe = document.getElementById('preview-iframe');
       iframe.src = API+'/preview/'+projectId;
       iframe.style.display = 'block';
