@@ -107,9 +107,8 @@ class DaytonaService:
         ))
 
         # ── Create sandbox ────────────────────────────────────
-            sandbox = daytona.create()
-                auto_stop_interval=15,    # stop after 15 min inactivity
-        )
+        sandbox = daytona.create()
+                
 
         logger.info("Sandbox created", sandbox_id=sandbox.id)
 
