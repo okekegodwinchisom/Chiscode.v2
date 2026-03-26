@@ -356,6 +356,11 @@ async function refreshPreview() {
     document.getElementById('preview-card').style.display = 'block';
   }
 
+  <iframe id="preview-iframe" class="preview-frame" height="420" 
+        title="Live Preview" 
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">
+  </iframe>
+  
   btn.disabled = false;
   btn.textContent = 'Refresh Preview';
 }
