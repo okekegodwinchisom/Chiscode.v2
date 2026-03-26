@@ -333,17 +333,22 @@ async function refreshPreview() {
   btn.textContent = 'Generating…';
 
   const res = await apiFetch('/projects/'+projectId+'/preview', {method:'POST'});
-  if (!res?.ok) { btn.disabled=false; btn.textContent='Generate Preview'; return; }
+  if (!res?.ok) { btn.disabled=false; btn.textContent='Refresh Preview'; return; }
 
   const info = await res.json();
 
   document.getElementById('preview-placeholder').style.display = 'none';
   document.getElementById('preview-container').style.display   = 'block';
 
-  if (info.preview_type === 'live') {
+  // Handle Daytona live URL (type: "live", preview_url: "https://...")
+  // OR static preview (preview_type: "live", iframe_url: "/api/v1/preview/...")
+  const isLive = info.type === 'live' || info.preview_type === 'live';
+  const liveUrl = info.preview_url || info.iframe_url;
+
+  if (isLive && liveUrl) {
     const iframe = document.getElementById('preview-iframe');
     iframe.style.display = 'block';
-    iframe.src = info.iframe_url + '?t=' + Date.now();
+    iframe.src = liveUrl;
     document.getElementById('preview-card').style.display = 'none';
   } else {
     document.getElementById('preview-iframe').style.display = 'none';
