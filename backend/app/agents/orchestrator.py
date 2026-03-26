@@ -836,10 +836,9 @@ def _route_after_generate(state: ProjectState) -> Literal["quality", "end"]:
     return "end" if state.get("error") else "quality"
 
 
-def _route_after_quality(state: ProjectState) -> Literal["playwright_test", "end"]:
-    """After quality check, run Playwright test if no errors."""
-    return "end" if state.get("error") else "playwright_test"
-
+def _route_after_quality(state: ProjectState) -> Literal["end"]:
+    """Always pause after quality for user to review before any deployment."""
+    return "end"
 
 def build_analyze_graph() -> StateGraph:
     """Phase 1: analyze prompt → suggest stacks. Pauses for HITL."""
@@ -851,20 +850,17 @@ def build_analyze_graph() -> StateGraph:
 
 
 def build_generate_graph() -> StateGraph:
-    """Phase 2: scaffold → generate → quality → playwright test."""
+    """Phase 2: scaffold → generate → quality check."""
     g = StateGraph(ProjectState)
-    g.add_node("scaffold",        node_scaffold)
-    g.add_node("generate",        node_generate)
-    g.add_node("quality",         node_quality)
-    g.add_node("playwright_test", node_playwright_test)  # ← new
+    g.add_node("scaffold", node_scaffold)
+    g.add_node("generate", node_generate)
+    g.add_node("quality",  node_quality)
 
     g.add_edge(START,      "scaffold")
     g.add_edge("scaffold", "generate")
     g.add_conditional_edges("generate", _route_after_generate,
                             {"quality": "quality", "end": END})
-    g.add_conditional_edges("quality", _route_after_quality,
-                            {"playwright_test": "playwright_test", "end": END})
-    g.add_edge("playwright_test", END)
+    g.add_edge("quality", END)
     return g.compile()
 
 
