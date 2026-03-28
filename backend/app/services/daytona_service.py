@@ -20,10 +20,205 @@ SANDBOX_ALIVE_SECONDS = 10 * 60  # 10 minutes
 # ── Stack → start command + port ──────────────────────────────
 
 def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
+    """
+    Detect project type from actual file structure and return (start_command, port).
+    
+    Supported project types:
+    - Hybrid: Next.js + FastAPI (both servers)
+    - Full-stack: Next.js (includes API routes), Nuxt, SvelteKit
+    - Frontend only: React (Vite), Vue, Svelte, Angular
+    - Backend only: FastAPI, Express, Django, Flask
+    - Static: HTML/CSS/JS
+    """
     frontend = (stack.get("frontend") or "").lower()
     backend  = (stack.get("backend")  or "").lower()
     files    = set(file_tree.keys())
-
+    
+    # ─────────────────────────────────────────────────────────────
+    # 1. HYBRID: NEXT.JS + FASTAPI (Python backend + JS frontend)
+    # ─────────────────────────────────────────────────────────────
+    has_next_config = "next.config.js" in files or "next.config.ts" in files or "next.config.mjs" in files
+    has_fastapi_file = "main.py" in files and "FastAPI" in file_tree.get("main.py", "")
+    has_requirements = "requirements.txt" in files
+    
+    if has_next_config and has_fastapi_file:
+        logger.info("Detected hybrid: Next.js + FastAPI")
+        start_cmd = """
+        cd /home/daytona && \
+        pip install -r requirements.txt && \
+        uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 & \
+        npm install && \
+        npm run dev -- --port 3000 --hostname 0.0.0.0
+        """
+        return start_cmd, 3000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 2. HYBRID: NEXT.JS + EXPRESS (JS backend + JS frontend)
+    # ─────────────────────────────────────────────────────────────
+    has_express_file = "server.js" in files or "app.js" in files
+    has_package_json = "package.json" in files
+    
+    if has_next_config and has_express_file:
+        logger.info("Detected hybrid: Next.js + Express")
+        start_cmd = """
+        cd /home/daytona && \
+        npm install && \
+        node server.js > /tmp/backend.log 2>&1 & \
+        npm run dev -- --port 3000 --hostname 0.0.0.0
+        """
+        return start_cmd, 3000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 3. HYBRID: REACT + FASTAPI (Python backend + React frontend)
+    # ─────────────────────────────────────────────────────────────
+    has_vite_config = "vite.config.js" in files or "vite.config.ts" in files
+    has_react_files = "src/App.jsx" in files or "src/App.tsx" in files or "src/main.jsx" in files
+    
+    if (has_vite_config or has_react_files) and has_fastapi_file:
+        logger.info("Detected hybrid: React + Vite + FastAPI")
+        start_cmd = """
+        cd /home/daytona && \
+        pip install -r requirements.txt && \
+        uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 & \
+        npm install && \
+        npm run dev -- --host 0.0.0.0 --port 5173
+        """
+        return start_cmd, 5173
+    
+    # ─────────────────────────────────────────────────────────────
+    # 4. FULL-STACK: NEXT.JS ONLY (includes API routes)
+    # ─────────────────────────────────────────────────────────────
+    if has_next_config:
+        logger.info("Detected full-stack: Next.js")
+        return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+    
+    # Check package.json for Next.js
+    if has_package_json:
+        import json
+        try:
+            pkg = json.loads(file_tree["package.json"])
+            dependencies = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+            if "next" in dependencies:
+                logger.info("Detected Next.js from package.json")
+                return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+        except:
+            pass
+    
+    # ─────────────────────────────────────────────────────────────
+    # 5. FULL-STACK: NUXT.JS (Vue full-stack)
+    # ─────────────────────────────────────────────────────────────
+    if "nuxt.config.js" in files or "nuxt.config.ts" in files:
+        logger.info("Detected full-stack: Nuxt.js")
+        return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 6. FULL-STACK: SVELTEKIT
+    # ─────────────────────────────────────────────────────────────
+    if "svelte.config.js" in files and ("src/routes" in files or "src/app.html" in files):
+        logger.info("Detected full-stack: SvelteKit")
+        return "cd /home/daytona && npm install && npm run dev -- --port 5173 --hostname 0.0.0.0", 5173
+    
+    # ─────────────────────────────────────────────────────────────
+    # 7. FRONTEND ONLY: REACT (Vite)
+    # ─────────────────────────────────────────────────────────────
+    if has_vite_config or has_react_files:
+        logger.info("Detected frontend: React + Vite")
+        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+    
+    # ─────────────────────────────────────────────────────────────
+    # 8. FRONTEND ONLY: VUE (Vite)
+    # ─────────────────────────────────────────────────────────────
+    if "vue.config.js" in files or "src/App.vue" in files:
+        logger.info("Detected frontend: Vue")
+        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+    
+    # ─────────────────────────────────────────────────────────────
+    # 9. FRONTEND ONLY: SVELTE
+    # ─────────────────────────────────────────────────────────────
+    if "svelte.config.js" in files or "src/App.svelte" in files:
+        logger.info("Detected frontend: Svelte")
+        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+    
+    # ─────────────────────────────────────────────────────────────
+    # 10. FRONTEND ONLY: ANGULAR
+    # ─────────────────────────────────────────────────────────────
+    if "angular.json" in files:
+        logger.info("Detected frontend: Angular")
+        return "cd /home/daytona && npm install && ng serve --host 0.0.0.0 --port 4200", 4200
+    
+    # ─────────────────────────────────────────────────────────────
+    # 11. BACKEND ONLY: FASTAPI
+    # ─────────────────────────────────────────────────────────────
+    if has_fastapi_file:
+        logger.info("Detected backend: FastAPI")
+        return "cd /home/daytona && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
+    
+    # Check for FastAPI with different file structure
+    if "app/main.py" in files:
+        logger.info("Detected backend: FastAPI (app/main.py)")
+        return "cd /home/daytona && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000", 8000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 12. BACKEND ONLY: DJANGO
+    # ─────────────────────────────────────────────────────────────
+    if "manage.py" in files:
+        logger.info("Detected backend: Django")
+        return "cd /home/daytona && pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 13. BACKEND ONLY: FLASK
+    # ─────────────────────────────────────────────────────────────
+    if "app.py" in files:
+        content = file_tree.get("app.py", "")
+        if "Flask" in content:
+            logger.info("Detected backend: Flask")
+            return "cd /home/daytona && pip install -r requirements.txt && python app.py", 5000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 14. BACKEND ONLY: EXPRESS / NODE.JS
+    # ─────────────────────────────────────────────────────────────
+    if has_express_file:
+        logger.info("Detected backend: Express")
+        return "cd /home/daytona && npm install && node server.js", 3000
+    
+    # Check package.json for Express
+    if has_package_json:
+        import json
+        try:
+            pkg = json.loads(file_tree["package.json"])
+            scripts = pkg.get("scripts", {})
+            if "start" in scripts and not has_next_config:
+                logger.info("Detected Node.js backend with start script")
+                return "cd /home/daytona && npm install && npm start", 3000
+        except:
+            pass
+    
+    # ─────────────────────────────────────────────────────────────
+    # 15. BACKEND ONLY: GO (Gin)
+    # ─────────────────────────────────────────────────────────────
+    if "go.mod" in files:
+        if "main.go" in files:
+            logger.info("Detected backend: Go")
+            return "cd /home/daytona && go mod download && go run main.go", 8080
+    
+    # ─────────────────────────────────────────────────────────────
+    # 16. BACKEND ONLY: RUST (Axum)
+    # ─────────────────────────────────────────────────────────────
+    if "Cargo.toml" in files:
+        if "src/main.rs" in files:
+            logger.info("Detected backend: Rust")
+            return "cd /home/daytona && cargo run --release", 8080
+    
+    # ─────────────────────────────────────────────────────────────
+    # 17. STATIC: HTML/CSS/JS
+    # ─────────────────────────────────────────────────────────────
+    if "index.html" in files or any(f.endswith(".html") for f in files):
+        logger.info("Detected static: HTML/CSS/JS")
+        return "cd /home/daytona && python3 -m http.server 8080", 8080
+    
+    # ─────────────────────────────────────────────────────────────
+    # 18. FALLBACK FROM STACK DICTIONARY
+    # ─────────────────────────────────────────────────────────────
     if "next" in frontend:
         return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
     if "react" in frontend or "vite" in frontend:
@@ -32,6 +227,8 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
         return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0", 3000
     if "svelte" in frontend:
         return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0", 5173
+    if "angular" in frontend:
+        return "cd /home/daytona && npm install && ng serve --host 0.0.0.0 --port 4200", 4200
     if "fastapi" in backend or "python" in backend:
         if "main.py" in files:
             return "cd /home/daytona && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
@@ -41,12 +238,16 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
         if "server.js" in files:
             return "cd /home/daytona && npm install && node server.js", 3000
         return "cd /home/daytona && npm install && npm start", 3000
-    if "index.html" in files:
-        return "cd /home/daytona && python3 -m http.server 8080", 8080
-
-    return "cd /home/daytona && npm install && npm start", 3000
-
-
+    if "django" in backend:
+        return "cd /home/daytona && pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
+    if "flask" in backend:
+        return "cd /home/daytona && pip install -r requirements.txt && python app.py", 5000
+    
+    # ─────────────────────────────────────────────────────────────
+    # 19. ULTIMATE FALLBACK
+    # ─────────────────────────────────────────────────────────────
+    logger.warning("No start command detected, using fallback")
+    return "cd /home/daytona && echo 'No start command detected' && sleep 30", 8080
 # ── Daytona Service ────────────────────────────────────────────
 
 class DaytonaService:
