@@ -341,10 +341,26 @@ class DaytonaService:
             timeout=10,
         )
 
-        # Wait for app to start
+        # Replace the fixed sleep with a poll loop
         import time
-        time.sleep(8)
+        import urllib.request
 
+        # Wait for app to start — poll instead of fixed sleep
+        start_wait = time.time()
+        app_ready  = False
+        while time.time() - start_wait < 120:  # wait up to 2 minutes
+            time.sleep(5)
+            try:
+                req = urllib.request.urlopen(preview_url, timeout=5)
+                if req.status < 500:
+                    app_ready = True
+                    break
+            except Exception:
+                pass  # still starting
+
+        if not app_ready:
+            logger.warning("App did not respond in time", url=preview_url)
+            
         # ── Get preview URL ───────────────────────────────────
         try:
             preview_link = sandbox.get_preview_link(port)
@@ -385,7 +401,10 @@ class DaytonaService:
             api_key=self.api_key,
             server_url="https://app.daytona.io/api",
         ))
-        sandbox = daytona.get_current_sandbox(workspace_id)
+        sandboxes = daytona.list()
+        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
+        if not sandbox:
+            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
         daytona.delete(sandbox)
 
     async def get_sandbox_status(self, workspace_id: str) -> dict:
@@ -404,7 +423,10 @@ class DaytonaService:
             api_key=self.api_key,
             server_url="https://app.daytona.io/api",
         ))
-        sandbox = daytona.get_current_sandbox(workspace_id)
+        sandboxes = daytona.list()
+        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
+        if not sandbox:
+            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
         return {"status": "running", "id": sandbox.id}
 
     async def _upload_files(
@@ -431,7 +453,10 @@ class DaytonaService:
             api_key=self.api_key,
             server_url="https://app.daytona.io/api",
         ))
-        sandbox = daytona.get_current_sandbox(workspace_id)
+        sandboxes = daytona.list()
+        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
+        if not sandbox:
+            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
         for filepath, content in file_tree.items():
             try:
                 dir_path = "/".join(filepath.split("/")[:-1])
@@ -467,7 +492,10 @@ class DaytonaService:
             api_key=self.api_key,
             server_url="https://app.daytona.io/api",
         ))
-        sandbox = daytona.get_current_sandbox(workspace_id)
+        sandboxes = daytona.list()
+        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
+        if not sandbox:
+            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
         result  = sandbox.process.exec(
             f"nohup sh -c '{command}' > /tmp/app.log 2>&1 &",
             timeout=10,
