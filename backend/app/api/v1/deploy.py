@@ -18,10 +18,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-# Import Modal service instead of Daytona
-from app.services.modal_service import ModalSandboxService
-sandbox_service = ModalSandboxService()
-
 from app.api.deps import get_current_user
 from app.core.logging import get_logger
 from app.db.mongodb import get_db, projects_collection
@@ -137,6 +133,9 @@ async def create_preview(
     """
     from bson import ObjectId
     from app.core.config import settings
+    from app.services.modal_service import ModalService
+    modal_svc = ModalService()
+    sandbox   = await modal_svc.create_sandbox(...)
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -335,7 +334,10 @@ async def get_live_preview_url(
     otherwise fall back to the static HTML preview.
     """
     from bson import ObjectId
-    
+    from app.services.modal_service import ModalService
+    modal_svc = ModalService()
+    status    = await modal_svc.get_sandbox_status(daytona_workspace_id)
+
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
         "user_id": current_user.id,
