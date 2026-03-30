@@ -84,7 +84,9 @@ class Settings(BaseSettings):
 
     # ── E2B ───────────────────────────────────────────────────────
     e2b_api_key: str = Field(default="", env="E2B_API_KEY")
-
+    e2b_sandbox_timeout: int = Field(default=600, env="E2B_SANDBOX_TIMEOUT")  # 10 minutes
+    e2b_template: str = Field(default="base", env="E2B_TEMPLATE")  # base, nextjs
+    
     #____frontendbase____
     frontend_base_url: str = Field(
     default="https://godwin021-chiscode-v2.hf.space",
