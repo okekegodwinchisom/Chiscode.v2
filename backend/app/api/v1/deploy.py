@@ -135,7 +135,6 @@ async def create_preview(
     from app.core.config import settings
     from app.services.modal_service import ModalService
     modal_svc = ModalService()
-    sandbox   = await modal_svc.create_sandbox(...)
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -150,11 +149,7 @@ async def create_preview(
 
     # ── Try Modal sandbox first ─────────────────────────────────────
     try:
-        sandbox = await sandbox_service.create_sandbox(
-            project_id=project_id,
-            project_name=project_name,
-            file_tree=file_tree,
-            stack=stack,
+        sandbox   = await modal_svc.create_sandbox(...)
         )
         
         # Save live URL and sandbox ID to project
@@ -336,7 +331,6 @@ async def get_live_preview_url(
     from bson import ObjectId
     from app.services.modal_service import ModalService
     modal_svc = ModalService()
-    status    = await modal_svc.get_sandbox_status(daytona_workspace_id)
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -351,7 +345,7 @@ async def get_live_preview_url(
 
     if modal_url and modal_sandbox_id:
         try:
-            status = await sandbox_service.get_sandbox_status(modal_sandbox_id)
+            status = await modal_svc.get_sandbox_status(modal_sandbox_id)
             if status.get("status") in ("running", "started"):
                 return {
                     "url":  modal_url,
