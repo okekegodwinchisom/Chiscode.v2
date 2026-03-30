@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time 
-from typing import Dict, Optional, Turble
+from typing import Dict, Optional, Tuble
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
