@@ -6,15 +6,21 @@ POST /api/v1/projects/{id}/preview         — generate/refresh preview
 GET  /api/v1/preview/{id}                  — serve live preview HTML
 GET  /api/v1/projects/{id}/preview/card    — get preview card data
 GET  /api/v1/projects/{id}/deploy/configs  — get all generated config files
+GET  /api/v1/projects/{id}/preview/live    — get live preview URL
 """
 from __future__ import annotations
 
 from typing import Optional
 import json
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
+
+# Import Modal service instead of Daytona
+from app.services.modal_service import ModalSandboxService
+sandbox_service = ModalSandboxService()
 
 from app.api.deps import get_current_user
 from app.core.logging import get_logger
@@ -125,6 +131,10 @@ async def create_preview(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
+    """
+    Generate a live preview for the project using Modal sandbox.
+    Falls back to static preview if sandbox creation fails.
+    """
     from bson import ObjectId
     from app.core.config import settings
 
@@ -139,33 +149,46 @@ async def create_preview(
     stack        = doc.get("stack", {})
     project_name = doc.get("name", "app")
 
-    # ── Try Daytona first ─────────────────────────────────────
+    # ── Try Modal sandbox first ─────────────────────────────────────
     try:
-        from app.services.daytona_service import DaytonaService
-        daytona = DaytonaService()
-        sandbox = await daytona.create_sandbox(
+        sandbox = await sandbox_service.create_sandbox(
             project_id=project_id,
             project_name=project_name,
             file_tree=file_tree,
             stack=stack,
         )
-        # Save live URL to project
+        
+        # Save live URL and sandbox ID to project
         await projects_collection().update_one(
             {"_id": ObjectId(project_id)},
             {"$set": {
                 "preview_url":          sandbox["preview_url"],
-                "daytona_workspace_id": sandbox["workspace_id"],
+                "modal_sandbox_id":     sandbox["sandbox_id"],
+                "preview_type":         "live",
+                "preview_updated_at":   __import__("datetime").datetime.utcnow().isoformat(),
             }},
         )
+        
+        logger.info(
+            "Modal sandbox preview created",
+            project_id=project_id,
+            sandbox_id=sandbox["sandbox_id"],
+            preview_url=sandbox["preview_url"]
+        )
+        
         return {
-            "type":        "live",
-            "preview_url": sandbox["preview_url"],
-            "workspace_id": sandbox["workspace_id"],
+            "type":         "live",
+            "preview_url":  sandbox["preview_url"],
+            "sandbox_id":   sandbox["sandbox_id"],
+            "port":         sandbox["port"],
         }
 
     except Exception as exc:
-        logger.warning("Daytona sandbox failed — falling back to static preview",
-                       error=str(exc))
+        logger.warning(
+            "Modal sandbox failed — falling back to static preview",
+            project_id=project_id,
+            error=str(exc)
+        )
 
     # ── Fallback to static preview ────────────────────────────
     info = await generate_preview(
@@ -175,7 +198,18 @@ async def create_preview(
         project_name=project_name,
         base_url=settings.frontend_base_url,
     )
+    
+    # Store that we're using static preview
+    await projects_collection().update_one(
+        {"_id": ObjectId(project_id)},
+        {"$set": {
+            "preview_type": "static",
+            "preview_updated_at": __import__("datetime").datetime.utcnow().isoformat(),
+        }},
+    )
+    
     return info.model_dump()
+
 
 @router.get("/preview/{project_id}", response_class=HTMLResponse)
 async def serve_preview(project_id: str):
@@ -184,12 +218,13 @@ async def serve_preview(project_id: str):
     No auth required — iframe needs direct access.
     Auto-generates preview if not yet stored.
     """
+    from bson import ObjectId
+    
     html = await get_preview_html(project_id)
 
     # Auto-generate if not found in MongoDB
     if not html:
         try:
-            from bson import ObjectId
             doc = await projects_collection().find_one(
                 {"_id": ObjectId(project_id)}
             )
@@ -241,11 +276,12 @@ async def get_card(
     current_user: UserInDB = Depends(get_current_user),
 ):
     """Get preview card data for non-HTML projects."""
+    from bson import ObjectId
+    
     card = await get_preview_card(project_id)
     if not card:
-        from bson import ObjectId
         doc = await projects_collection().find_one(
-            {"_id": ObjectId(project_id)}
+            {"_id": ObjectId(project_id), "user_id": current_user.id}
         )
         if not doc:
             raise HTTPException(status_code=404, detail="Project not found.")
@@ -255,7 +291,7 @@ async def get_card(
             stack=doc.get("stack", {}),
             project_name=doc.get("name", ""),
         )
-        card = info.card_data
+        card = info.card_data if hasattr(info, 'card_data') else None
 
     return card or {}
 
@@ -288,16 +324,18 @@ async def get_deploy_configs(
         "deploy_urls": doc.get("deploy_urls", {}),
     }
 
+
 @router.get("/projects/{project_id}/preview/live")
 async def get_live_preview_url(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
     """
-    Return the live Daytona preview URL if sandbox is still running,
+    Return the live Modal preview URL if sandbox is still running,
     otherwise fall back to the static HTML preview.
     """
     from bson import ObjectId
+    
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
         "user_id": current_user.id,
@@ -305,23 +343,104 @@ async def get_live_preview_url(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    # Check if Daytona sandbox is still alive
-    daytona_url          = doc.get("preview_url", "")
-    daytona_workspace_id = doc.get("daytona_workspace_id", "")
+    # Check if Modal sandbox is still alive
+    modal_url          = doc.get("preview_url", "")
+    modal_sandbox_id   = doc.get("modal_sandbox_id", "")
 
-    if daytona_url and daytona_workspace_id:
+    if modal_url and modal_sandbox_id:
         try:
-            from app.services.daytona_service import DaytonaService
-            daytona = DaytonaService()
-            status  = await daytona.get_sandbox_status(daytona_workspace_id)
+            status = await sandbox_service.get_sandbox_status(modal_sandbox_id)
             if status.get("status") in ("running", "started"):
-                return {"url": daytona_url, "type": "live"}
-        except Exception:
-            pass
+                return {
+                    "url":  modal_url,
+                    "type": "live",
+                    "sandbox_id": modal_sandbox_id
+                }
+            else:
+                logger.info(
+                    "Modal sandbox no longer running",
+                    project_id=project_id,
+                    sandbox_id=modal_sandbox_id,
+                    status=status.get("status")
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to check Modal sandbox status",
+                project_id=project_id,
+                error=str(exc)
+            )
 
     # Fall back to static preview
     return {
-        "url":  f"/api/v1/preview/{project_id}",
-        "type": "static",
+        "url":   f"/api/v1/preview/{project_id}",
+        "type":  "static",
     }
+
+
+@router.post("/projects/{project_id}/preview/refresh")
+async def refresh_preview(
+    project_id:   str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """
+    Force refresh the preview by destroying the existing sandbox
+    and creating a new one.
+    """
+    from bson import ObjectId
     
+    doc = await projects_collection().find_one({
+        "_id":     ObjectId(project_id),
+        "user_id": current_user.id,
+    })
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    
+    # Clean up existing sandbox if present
+    existing_sandbox_id = doc.get("modal_sandbox_id")
+    if existing_sandbox_id:
+        try:
+            await sandbox_service.destroy_sandbox(existing_sandbox_id)
+            logger.info("Destroyed existing sandbox for refresh", sandbox_id=existing_sandbox_id)
+        except Exception as exc:
+            logger.warning("Failed to destroy existing sandbox", error=str(exc))
+    
+    # Create new preview
+    return await create_preview(project_id, current_user)
+
+
+@router.delete("/projects/{project_id}/preview/sandbox")
+async def destroy_preview_sandbox(
+    project_id:   str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """
+    Manually destroy the Modal sandbox for a project.
+    Useful for cleanup or when preview is no longer needed.
+    """
+    from bson import ObjectId
+    
+    doc = await projects_collection().find_one({
+        "_id":     ObjectId(project_id),
+        "user_id": current_user.id,
+    })
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    
+    sandbox_id = doc.get("modal_sandbox_id")
+    if not sandbox_id:
+        return {"message": "No sandbox found for this project"}
+    
+    try:
+        await sandbox_service.destroy_sandbox(sandbox_id)
+        
+        # Clear sandbox ID from project
+        await projects_collection().update_one(
+            {"_id": ObjectId(project_id)},
+            {"$unset": {"modal_sandbox_id": "", "preview_url": ""}}
+        )
+        
+        return {"message": "Sandbox destroyed successfully", "sandbox_id": sandbox_id}
+        
+    except Exception as exc:
+        logger.error("Failed to destroy sandbox", sandbox_id=sandbox_id, error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Failed to destroy sandbox: {exc}")
