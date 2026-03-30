@@ -149,7 +149,12 @@ async def create_preview(
 
     # ── Try Modal sandbox first ─────────────────────────────────────
     try:
-        sandbox   = await modal_svc.create_sandbox(...)
+        sandbox   = await modal_svc.create_sandbox(
+            project_id=project_id,
+            project_name=project_name,
+            file_tree=file_tree,
+            stack=stack,
+        )
         
         
         # Save live URL and sandbox ID to project
