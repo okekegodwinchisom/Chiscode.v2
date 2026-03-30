@@ -83,8 +83,8 @@ class Settings(BaseSettings):
     rate_limit_yearly: int = 1000
 
     # ── modal ──────────────────────────────────────────────────
-    modal_token_id: = Field(default="", env="MODAL_TOKEN_ID")
-    modal_token_secret: = Field(default="", env="MODAL_TOKEN_SECRET")
+    modal_token_id: str = Field(default="", env="MODAL_TOKEN_ID")
+    modal_token_secret: str = Field(default="", env="MODAL_TOKEN_SECRET")
     modal_api_key: str = Field(default="", env="MODAL_API_KEY")
     modal_url: str = Field(default="https://api.modal.com", env="MODAL_URL")
     
