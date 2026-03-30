@@ -82,12 +82,9 @@ class Settings(BaseSettings):
     rate_limit_pro: int = 1000
     rate_limit_yearly: int = 1000
 
-    # ── modal ──────────────────────────────────────────────────
-    modal_token_id: str = Field(default="", env="MODAL_TOKEN_ID")
-    modal_token_secret: str = Field(default="", env="MODAL_TOKEN_SECRET")
-    modal_api_key: str = Field(default="", env="MODAL_API_KEY")
-    modal_url: str = Field(default="https://api.modal.com", env="MODAL_URL")
-    
+    # ── E2B ───────────────────────────────────────────────────────
+    e2b_api_key: str = Field(default="", env="E2B_API_KEY")
+
     #____frontendbase____
     frontend_base_url: str = Field(
     default="https://godwin021-chiscode-v2.hf.space",
