@@ -7,15 +7,20 @@ Uses official Daytona Python SDK.
 from __future__ import annotations
 
 import asyncio
+import json
+import time 
+from typing import Dict, Optional, Turble
+from datetime import datetime, timedelta, timezone
+
 from app.core.config import settings
 from app.core.logging import get_logger
-from daytona import Daytona, DaytonaConfig
 
 
 logger = get_logger(__name__)
 
 SANDBOX_ALIVE_SECONDS = 10 * 60  # 10 minutes
-
+SANDBOX_TIMEOUT_SECONDS = 20 * 60
+SANDBOX_IDLE_TIMEOUT_SECONDS = 5 * 60
 
 # ── Stack → start command + port ──────────────────────────────
 
@@ -248,256 +253,277 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     # ─────────────────────────────────────────────────────────────
     logger.warning("No start command detected, using fallback")
     return "cd /home/daytona && echo 'No start command detected' && sleep 30", 8080
-# ── Daytona Service ────────────────────────────────────────────
+# ── Modal Sandbox Service ─────────────────────────────────────
 
-class DaytonaService:
-
+class ModalSandboxService:
+    """
+    Modal-based sandbox service for previewing generated projects.
+    Uses gVisor isolation for secure code execution.
+    """
+    
     def __init__(self):
-        self.api_key = settings.daytona_api_key
-
-    def _client(self):
-        from daytona import Daytona, DaytonaConfig
-        return Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-
+        self.api_key = settings.modal_api_key
+        self.app = None
+        
+    def _get_app(self):
+        """Get or create Modal app reference."""
+        import modal
+        if self.app is None:
+            # Create or lookup your Modal app
+            self.app = modal.App.lookup("chiscode-previews", create_if_missing=True)
+        return self.app
+    
     async def create_sandbox(
         self,
-        project_id:   str,
+        project_id: str,
         project_name: str,
-        file_tree:    dict[str, str],
-        stack:        dict,
-    ) -> dict:
+        file_tree: Dict[str, str],
+        stack: Dict,
+    ) -> Dict:
         """
-        Create a Daytona sandbox, upload all files, start the app.
-        Returns { workspace_id, preview_url, port }
+        Create a Modal sandbox, upload all files, start the app.
+        Returns { sandbox_id, preview_url, port }
         """
-
+        import modal
+        
         start_cmd, port = _detect_start_command(file_tree, stack)
-
-        logger.info("Creating Daytona sandbox",
-                    project_id=project_id, cmd=start_cmd, port=port)
-
-        # Run blocking SDK calls in thread pool to avoid blocking event loop
-        loop    = asyncio.get_event_loop()
-        sandbox = await loop.run_in_executor(None, self._create_sync,
-                                             file_tree, start_cmd, port)
-
-        logger.info("Sandbox ready", sandbox_id=sandbox["workspace_id"],
-                    url=sandbox["preview_url"])
-
+        
+        logger.info(
+            "Creating Modal sandbox",
+            project_id=project_id,
+            cmd=start_cmd[:200],  # Truncate for logs
+            port=port
+        )
+        
+        # Generate file creation commands
+        file_setup_commands = self._generate_file_setup_commands(file_tree)
+        
+        # Combine file setup with start command
+        full_start_cmd = f"""
+        cd /tmp/preview &&
+        {file_setup_commands} &&
+        {start_cmd}
+        """
+        
+        # Run in thread pool for synchronous Modal calls
+        loop = asyncio.get_event_loop()
+        sandbox = await loop.run_in_executor(
+            None,
+            self._create_sync,
+            full_start_cmd,
+            port,
+            project_id
+        )
+        
+        logger.info(
+            "Sandbox ready",
+            sandbox_id=sandbox["sandbox_id"],
+            url=sandbox["preview_url"]
+        )
+        
         # Schedule auto-shutdown
         asyncio.create_task(
-            self._auto_shutdown(sandbox["workspace_id"], SANDBOX_ALIVE_SECONDS)
+            self._auto_shutdown(sandbox["sandbox_id"], SANDBOX_ALIVE_SECONDS)
         )
-
+        
         return sandbox
-
+    
+    def _generate_file_setup_commands(self, file_tree: Dict[str, str]) -> str:
+        """Generate shell commands to create files in sandbox."""
+        commands = []
+        
+        for filepath, content in file_tree.items():
+            # Create parent directory
+            dir_path = "/".join(filepath.split("/")[:-1])
+            if dir_path:
+                commands.append(f"mkdir -p {dir_path}")
+            
+            # Write file content (escape for shell)
+            # Use a here-doc for reliable content writing
+            escaped_content = content.replace("'", "'\\''")
+            commands.append(f"cat > {filepath} << 'EOF'\n{escaped_content}\nEOF")
+        
+        return " && ".join(commands)
+    
     def _create_sync(
         self,
-        file_tree: dict[str, str],
         start_cmd: str,
-        port:      int,
-    ) -> dict:
+        port: int,
+        project_id: str
+    ) -> Dict:
         """Synchronous sandbox creation — runs in thread pool."""
-        from daytona import Daytona, DaytonaConfig
-
-        daytona = Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-
-        # ── Create sandbox ────────────────────────────────────
-        sandbox = daytona.create()
-                
-
-        logger.info("Sandbox created", sandbox_id=sandbox.id)
-
-        # ── Upload files ──────────────────────────────────────
-        for filepath, content in file_tree.items():
-            try:
-                # Create parent directories
-                dir_path = "/".join(filepath.split("/")[:-1])
-                if dir_path:
-                    sandbox.process.exec(
-                        f"mkdir -p /home/daytona/{dir_path}",
-                        timeout=10,
-                    )
-                # Upload file content
-                sandbox.fs.upload_file(
-                    content.encode("utf-8"),
-                    f"/home/daytona/{filepath}",
-                )
-            except Exception as exc:
-                logger.warning("File upload failed",
-                               path=filepath, error=str(exc))
-
-        logger.info("Files uploaded", count=len(file_tree))
-
-        # ── Start the app in background ───────────────────────
-        sandbox.process.exec(
-            f"nohup sh -c '{start_cmd}' > /tmp/app.log 2>&1 &",
-            timeout=10,
+        import modal
+        from modal import Sandbox
+        
+        app = self._get_app()
+        
+        # Create sandbox with custom configuration
+        sandbox = Sandbox.create(
+            # Use a lightweight image with Node.js and Python
+            "debian-slim",
+            # Command to run in the sandbox
+            ["/bin/bash", "-c", start_cmd],
+            app=app,
+            timeout=SANDBOX_TIMEOUT_SECONDS,
+            idle_timeout=SANDBOX_IDLE_TIMEOUT_SECONDS,
+            # Expose the port for preview
+            encrypted_ports=[port],
+            # Resource allocation
+            memory=2048,  # 2GB RAM
+            cpu=2.0,      # 2 CPU cores
+            # Custom environment variables
+            env_vars={
+                "PROJECT_ID": project_id,
+                "NODE_ENV": "development",
+                "PYTHONUNBUFFERED": "1"
+            }
         )
-
-        # Replace the fixed sleep with a poll loop
-        import time
-        import urllib.request
-
-        # Wait for app to start — poll instead of fixed sleep
-        start_wait = time.time()
-        app_ready  = False
-        while time.time() - start_wait < 120:  # wait up to 2 minutes
-            time.sleep(5)
-            try:
-                req = urllib.request.urlopen(preview_url, timeout=5)
-                if req.status < 500:
-                    app_ready = True
-                    break
-            except Exception:
-                pass  # still starting
-
-        if not app_ready:
-            logger.warning("App did not respond in time", url=preview_url)
-            
-        # ── Get preview URL ───────────────────────────────────
-        try:
-            preview_link = sandbox.get_preview_link(port)
-            # Handle PortPreviewUrl object
-            if hasattr(preview_link, 'url'):
-                preview_url = preview_link.url
-            else:
-                preview_url = str(preview_link)
-        except Exception:
-            preview_url = f"https://proxy.app.daytona.io/{sandbox.id}/{port}"
-
+        
+        logger.info("Sandbox created", sandbox_id=sandbox.object_id)
+        
+        # Wait for sandbox to be ready
+        sandbox.wait_for_ready(timeout=60)
+        
+        # Get tunnel URLs
+        tunnels = sandbox.tunnels()
+        preview_url = tunnels[port].url
+        
         return {
-            "workspace_id": sandbox.id,
-            "preview_url":  preview_url,
-            "port":         port,
+            "sandbox_id": sandbox.object_id,
+            "preview_url": preview_url,
+            "port": port
         }
-
-    async def _auto_shutdown(self, workspace_id: str, delay_s: int) -> None:
+    
+    async def destroy_sandbox(self, sandbox_id: str) -> None:
+        """Destroy a sandbox by ID."""
+        import modal
+        
+        try:
+            sandbox = modal.Sandbox.from_id(sandbox_id)
+            sandbox.terminate()
+            sandbox.detach()  # Clean up local connection
+            logger.info("Sandbox destroyed", sandbox_id=sandbox_id)
+        except Exception as exc:
+            logger.warning(
+                "Sandbox destroy failed",
+                sandbox_id=sandbox_id,
+                error=str(exc)
+            )
+    
+    async def _auto_shutdown(self, sandbox_id: str, delay_s: int) -> None:
         """Auto-destroy sandbox after delay."""
         await asyncio.sleep(delay_s)
-        await self.destroy_sandbox(workspace_id)
-
-    async def destroy_sandbox(self, workspace_id: str) -> None:
-        """Destroy a sandbox by ID."""
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, self._destroy_sync, workspace_id
-            )
-            logger.info("Sandbox destroyed", workspace_id=workspace_id)
-        except Exception as exc:
-            logger.warning("Sandbox destroy failed",
-                           workspace_id=workspace_id, error=str(exc))
-
-    def _destroy_sync(self, workspace_id: str) -> None:
-        from daytona import Daytona, DaytonaConfig
-        daytona = Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-        sandboxes = daytona.list()
-        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
-        if not sandbox:
-            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
-        daytona.delete(sandbox)
-
-    async def get_sandbox_status(self, workspace_id: str) -> dict:
+        await self.destroy_sandbox(sandbox_id)
+    
+    async def get_sandbox_status(self, sandbox_id: str) -> Dict:
         """Check if sandbox is still running."""
+        import modal
+        
         try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self._status_sync, workspace_id
-            )
-        except Exception:
-            return {"status": "stopped"}
-
-    def _status_sync(self, workspace_id: str) -> dict:
-        from daytona import Daytona, DaytonaConfig
-        daytona = Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-        sandboxes = daytona.list()
-        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
-        if not sandbox:
-            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
-        return {"status": "running", "id": sandbox.id}
-
-    async def _upload_files(
-        self,
-        workspace_id: str,
-        file_tree:    dict[str, str],
-    ) -> None:
-        """Upload files to existing sandbox (for self-heal redeploy)."""
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, self._upload_sync, workspace_id, file_tree
-            )
+            sandbox = modal.Sandbox.from_id(sandbox_id)
+            status = sandbox.status()
+            return {
+                "status": status.value,
+                "id": sandbox_id
+            }
         except Exception as exc:
-            logger.warning("File upload failed", error=str(exc))
-
-    def _upload_sync(
+            logger.debug("Sandbox status check failed", sandbox_id=sandbox_id, error=str(exc))
+            return {"status": "stopped", "id": sandbox_id}
+    
+    async def get_sandbox_logs(self, sandbox_id: str, lines: int = 50) -> str:
+        """Retrieve sandbox logs for debugging."""
+        import modal
+        
+        try:
+            sandbox = modal.Sandbox.from_id(sandbox_id)
+            # Modal logs are accessible via the client
+            # This returns the sandbox's stdout/stderr
+            logs = sandbox.logs()
+            return "\n".join(logs[-lines:]) if logs else "No logs available"
+        except Exception as exc:
+            logger.warning("Failed to get sandbox logs", sandbox_id=sandbox_id, error=str(exc))
+            return f"Error retrieving logs: {exc}"
+    
+    async def exec_command(
         self,
-        workspace_id: str,
-        file_tree:    dict[str, str],
+        sandbox_id: str,
+        command: str,
+        timeout: int = 30
+    ) -> Dict:
+        """Execute a command in an existing sandbox."""
+        import modal
+        
+        try:
+            sandbox = modal.Sandbox.from_id(sandbox_id)
+            # Execute command and capture output
+            proc = sandbox.exec(command, timeout=timeout)
+            result = await proc.wait()
+            
+            return {
+                "success": result == 0,
+                "stdout": await proc.stdout.read(),
+                "stderr": await proc.stderr.read(),
+                "exit_code": result
+            }
+        except Exception as exc:
+            logger.warning("Command execution failed", sandbox_id=sandbox_id, error=str(exc))
+            return {"success": False, "error": str(exc)}
+    
+    async def upload_files(
+        self,
+        sandbox_id: str,
+        file_tree: Dict[str, str]
     ) -> None:
-        from daytona import Daytona, DaytonaConfig
-        daytona = Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-        sandboxes = daytona.list()
-        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
-        if not sandbox:
-            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
-        for filepath, content in file_tree.items():
-            try:
+        """Upload files to an existing sandbox."""
+        import modal
+        
+        try:
+            sandbox = modal.Sandbox.from_id(sandbox_id)
+            
+            for filepath, content in file_tree.items():
+                # Create parent directory if needed
                 dir_path = "/".join(filepath.split("/")[:-1])
                 if dir_path:
-                    sandbox.process.exec(
-                        f"mkdir -p /home/daytona/{dir_path}", timeout=10
-                    )
-                sandbox.fs.upload_file(
-                    content.encode("utf-8"),
-                    f"/home/daytona/{filepath}",
+                    await self.exec_command(sandbox_id, f"mkdir -p {dir_path}")
+                
+                # Upload file content
+                # Modal doesn't have direct file upload in sandbox API yet
+                # Use exec with cat as workaround
+                escaped_content = content.replace("'", "'\\''")
+                await self.exec_command(
+                    sandbox_id,
+                    f"cat > {filepath} << 'EOF'\n{escaped_content}\nEOF"
                 )
-            except Exception as exc:
-                logger.warning("File upload failed",
-                               path=filepath, error=str(exc))
-
-    async def _exec_command(
-        self,
-        workspace_id: str,
-        command:      str,
-    ) -> dict:
-        """Execute command in existing sandbox."""
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self._exec_sync, workspace_id, command
-            )
+            
+            logger.info("Files uploaded", sandbox_id=sandbox_id, count=len(file_tree))
+            
         except Exception as exc:
-            return {"error": str(exc)}
+            logger.warning("File upload failed", sandbox_id=sandbox_id, error=str(exc))
+    
+    async def restart_app(self, sandbox_id: str, start_cmd: str) -> bool:
+        """Restart the application in a running sandbox."""
+        try:
+            # Kill existing processes on the port
+            await self.exec_command(sandbox_id, "pkill -f node || true")
+            await self.exec_command(sandbox_id, "pkill -f uvicorn || true")
+            
+            # Start the app again
+            result = await self.exec_command(
+                sandbox_id,
+                f"cd /tmp/preview && {start_cmd}",
+                timeout=10
+            )
+            
+            return result.get("success", False)
+            
+        except Exception as exc:
+            logger.warning("App restart failed", sandbox_id=sandbox_id, error=str(exc))
+            return False
 
-    def _exec_sync(self, workspace_id: str, command: str) -> dict:
-        from daytona import Daytona, DaytonaConfig
-        daytona = Daytona(DaytonaConfig(
-            api_key=self.api_key,
-            server_url="https://app.daytona.io/api",
-        ))
-        sandboxes = daytona.list()
-        sandbox = next((s for s in sandboxes if s.id == workspace_id), None)
-        if not sandbox:
-            raise RuntimeError(f"Sandbox {workspace_id} not found or already stopped")
-        result  = sandbox.process.exec(
-            f"nohup sh -c '{command}' > /tmp/app.log 2>&1 &",
-            timeout=10,
-        )
-        return {"output": str(result)}
+
+# ── For backward compatibility ─────────────────────────────────
+# Keep the same interface as DaytonaService
+
+class SandboxService(ModalSandboxService):
+    """Alias for backward compatibility with existing code."""
+    pass
