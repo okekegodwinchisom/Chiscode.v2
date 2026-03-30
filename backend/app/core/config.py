@@ -82,9 +82,11 @@ class Settings(BaseSettings):
     rate_limit_pro: int = 1000
     rate_limit_yearly: int = 1000
 
-    # ── Daytona ──────────────────────────────────────────────────
-    daytona_api_key: str = Field(default="", env="DAYTONA_API_KEY")
-    daytona_url: str = Field(default="https://app.daytona.io/api", env="DAYTONA_URL")
+    # ── modal ──────────────────────────────────────────────────
+    modal_token_id: = Field(default="", env="MODAL_TOKEN_ID")
+    modal_token_secret: = Field(default="", env="MODAL_TOKEN_SECRET")
+    modal_api_key: str = Field(default="", env="MODAL_API_KEY")
+    modal_url: str = Field(default="https://api.modal.com", env="MODAL_URL")
     
     #____frontendbase____
     frontend_base_url: str = Field(
