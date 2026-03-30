@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time 
-from typing import Dict, Optional, Tuble
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
@@ -253,277 +252,211 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     # ─────────────────────────────────────────────────────────────
     logger.warning("No start command detected, using fallback")
     return "cd /home/daytona && echo 'No start command detected' && sleep 30", 8080
-# ── Modal Sandbox Service ─────────────────────────────────────
+# ── Modal Service ──────────────────────────────────────────────
 
-class ModalSandboxService:
-    """
-    Modal-based sandbox service for previewing generated projects.
-    Uses gVisor isolation for secure code execution.
-    """
-    
+class ModalService:
+
     def __init__(self):
-        self.api_key = settings.modal_api_key
-        self.app = None
-        
+        self.token_id     = settings.modal_token_id
+        self.token_secret = settings.modal_token_secret
+
     def _get_app(self):
-        """Get or create Modal app reference."""
         import modal
-        if self.app is None:
-            # Create or lookup your Modal app
-            self.app = modal.App.lookup("chiscode-previews", create_if_missing=True)
-        return self.app
-    
+        return modal.App.lookup(
+            "chiscode-previews",
+            create_if_missing=True,
+        )
+
     async def create_sandbox(
         self,
-        project_id: str,
+        project_id:   str,
         project_name: str,
-        file_tree: Dict[str, str],
-        stack: Dict,
-    ) -> Dict:
+        file_tree:    dict[str, str],
+        stack:        dict,
+    ) -> dict:
         """
-        Create a Modal sandbox, upload all files, start the app.
-        Returns { sandbox_id, preview_url, port }
+        Create a Modal sandbox, write files, start the app.
+        Returns { workspace_id, preview_url, port }
         """
-        import modal
-        
         start_cmd, port = _detect_start_command(file_tree, stack)
-        
-        logger.info(
-            "Creating Modal sandbox",
-            project_id=project_id,
-            cmd=start_cmd[:200],  # Truncate for logs
-            port=port
+        logger.info("Creating Modal sandbox",
+                    project_id=project_id, cmd=start_cmd, port=port)
+
+        loop    = asyncio.get_running_loop()
+        result  = await loop.run_in_executor(
+            None, self._create_sync, file_tree, stack, start_cmd, port
         )
-        
-        # Generate file creation commands
-        file_setup_commands = self._generate_file_setup_commands(file_tree)
-        
-        # Combine file setup with start command
-        full_start_cmd = f"""
-        cd /tmp/preview &&
-        {file_setup_commands} &&
-        {start_cmd}
-        """
-        
-        # Run in thread pool for synchronous Modal calls
-        loop = asyncio.get_event_loop()
-        sandbox = await loop.run_in_executor(
-            None,
-            self._create_sync,
-            full_start_cmd,
-            port,
-            project_id
-        )
-        
-        logger.info(
-            "Sandbox ready",
-            sandbox_id=sandbox["sandbox_id"],
-            url=sandbox["preview_url"]
-        )
-        
+
+        logger.info("Sandbox ready",
+                    sandbox_id=result["workspace_id"],
+                    url=result["preview_url"])
+
         # Schedule auto-shutdown
         asyncio.create_task(
-            self._auto_shutdown(sandbox["sandbox_id"], SANDBOX_ALIVE_SECONDS)
+            self._auto_shutdown(result["workspace_id"], SANDBOX_ALIVE_SECONDS)
         )
-        
-        return sandbox
-    
-    def _generate_file_setup_commands(self, file_tree: Dict[str, str]) -> str:
-        """Generate shell commands to create files in sandbox."""
-        commands = []
-        
-        for filepath, content in file_tree.items():
-            # Create parent directory
-            dir_path = "/".join(filepath.split("/")[:-1])
-            if dir_path:
-                commands.append(f"mkdir -p {dir_path}")
-            
-            # Write file content (escape for shell)
-            # Use a here-doc for reliable content writing
-            escaped_content = content.replace("'", "'\\''")
-            commands.append(f"cat > {filepath} << 'EOF'\n{escaped_content}\nEOF")
-        
-        return " && ".join(commands)
-    
+
+        return result
+
     def _create_sync(
         self,
+        file_tree: dict[str, str],
+        stack:     dict,
         start_cmd: str,
-        port: int,
-        project_id: str
-    ) -> Dict:
+        port:      int,
+    ) -> dict:
         """Synchronous sandbox creation — runs in thread pool."""
         import modal
-        from modal import Sandbox
-        
-        app = self._get_app()
-        
-        # Create sandbox with custom configuration
-        sandbox = Sandbox.create(
-            # Use a lightweight image with Node.js and Python
-            "debian-slim",
-            # Command to run in the sandbox
-            ["/bin/bash", "-c", start_cmd],
-            app=app,
-            timeout=SANDBOX_TIMEOUT_SECONDS,
-            idle_timeout=SANDBOX_IDLE_TIMEOUT_SECONDS,
-            # Expose the port for preview
-            encrypted_ports=[port],
-            # Resource allocation
-            memory=2048,  # 2GB RAM
-            cpu=2.0,      # 2 CPU cores
-            # Custom environment variables
-            env_vars={
-                "PROJECT_ID": project_id,
-                "NODE_ENV": "development",
-                "PYTHONUNBUFFERED": "1"
-            }
-        )
-        
-        logger.info("Sandbox created", sandbox_id=sandbox.object_id)
-        
-        # Wait for sandbox to be ready
-        sandbox.wait_for_ready(timeout=60)
-        
-        # Get tunnel URLs
-        tunnels = sandbox.tunnels()
-        preview_url = tunnels[port].url
-        
-        return {
-            "sandbox_id": sandbox.object_id,
-            "preview_url": preview_url,
-            "port": port
-        }
-    
-    async def destroy_sandbox(self, sandbox_id: str) -> None:
-        """Destroy a sandbox by ID."""
-        import modal
-        
-        try:
-            sandbox = modal.Sandbox.from_id(sandbox_id)
-            sandbox.terminate()
-            sandbox.detach()  # Clean up local connection
-            logger.info("Sandbox destroyed", sandbox_id=sandbox_id)
-        except Exception as exc:
-            logger.warning(
-                "Sandbox destroy failed",
-                sandbox_id=sandbox_id,
-                error=str(exc)
+
+        app   = self._get_app()
+        image = _detect_image(stack, file_tree)
+
+        # Create sandbox with tunnel on the app port
+        with modal.enable_output():
+            sandbox = modal.Sandbox.create(
+                app=app,
+                image=image,
+                timeout=SANDBOX_ALIVE_SECONDS + 60,
+                encrypted_ports=[port],
             )
-    
+
+        sandbox_id = sandbox.object_id
+        logger.info("Sandbox created", sandbox_id=sandbox_id)
+
+        # ── Write files ───────────────────────────────────────
+        sandbox.exec("mkdir", "-p", "/app")
+
+        for filepath, content in file_tree.items():
+            dir_path = "/".join(filepath.split("/")[:-1])
+            if dir_path:
+                sandbox.exec("mkdir", "-p", f"/app/{dir_path}")
+            try:
+                sandbox.fs.write_file(
+                    f"/app/{filepath}",
+                    content.encode("utf-8"),
+                )
+            except Exception as exc:
+                logger.warning("File write failed",
+                               path=filepath, error=str(exc))
+
+        logger.info("Files written", count=len(file_tree))
+
+        # ── Start app ─────────────────────────────────────────
+        sandbox.exec("bash", "-c",
+                     f"nohup {start_cmd} > /tmp/app.log 2>&1 &")
+
+        # ── Get tunnel URL ────────────────────────────────────
+        # Wait for tunnels to be available
+        tunnels = sandbox.tunnels(timeout=30)
+        tunnel  = tunnels.get(port)
+
+        if tunnel:
+            preview_url = tunnel.url
+        else:
+            preview_url = f"https://modal-{sandbox_id}-{port}.modal.run"
+
+        # ── Poll until app responds ───────────────────────────
+        import urllib.request
+        deadline = time.time() + 120  # 2 min max
+        while time.time() < deadline:
+            time.sleep(5)
+            try:
+                req = urllib.request.urlopen(preview_url, timeout=5)
+                if req.status < 500:
+                    break
+            except Exception:
+                pass
+
+        return {
+            "workspace_id": sandbox_id,
+            "preview_url":  preview_url,
+            "port":         port,
+        }
+
     async def _auto_shutdown(self, sandbox_id: str, delay_s: int) -> None:
-        """Auto-destroy sandbox after delay."""
+        """Auto-terminate sandbox after delay."""
         await asyncio.sleep(delay_s)
         await self.destroy_sandbox(sandbox_id)
-    
-    async def get_sandbox_status(self, sandbox_id: str) -> Dict:
-        """Check if sandbox is still running."""
-        import modal
-        
+
+    async def destroy_sandbox(self, sandbox_id: str) -> None:
+        """Terminate a Modal sandbox."""
         try:
-            sandbox = modal.Sandbox.from_id(sandbox_id)
-            status = sandbox.status()
-            return {
-                "status": status.value,
-                "id": sandbox_id
-            }
-        except Exception as exc:
-            logger.debug("Sandbox status check failed", sandbox_id=sandbox_id, error=str(exc))
-            return {"status": "stopped", "id": sandbox_id}
-    
-    async def get_sandbox_logs(self, sandbox_id: str, lines: int = 50) -> str:
-        """Retrieve sandbox logs for debugging."""
-        import modal
-        
-        try:
-            sandbox = modal.Sandbox.from_id(sandbox_id)
-            # Modal logs are accessible via the client
-            # This returns the sandbox's stdout/stderr
-            logs = sandbox.logs()
-            return "\n".join(logs[-lines:]) if logs else "No logs available"
-        except Exception as exc:
-            logger.warning("Failed to get sandbox logs", sandbox_id=sandbox_id, error=str(exc))
-            return f"Error retrieving logs: {exc}"
-    
-    async def exec_command(
-        self,
-        sandbox_id: str,
-        command: str,
-        timeout: int = 30
-    ) -> Dict:
-        """Execute a command in an existing sandbox."""
-        import modal
-        
-        try:
-            sandbox = modal.Sandbox.from_id(sandbox_id)
-            # Execute command and capture output
-            proc = sandbox.exec(command, timeout=timeout)
-            result = await proc.wait()
-            
-            return {
-                "success": result == 0,
-                "stdout": await proc.stdout.read(),
-                "stderr": await proc.stderr.read(),
-                "exit_code": result
-            }
-        except Exception as exc:
-            logger.warning("Command execution failed", sandbox_id=sandbox_id, error=str(exc))
-            return {"success": False, "error": str(exc)}
-    
-    async def upload_files(
-        self,
-        sandbox_id: str,
-        file_tree: Dict[str, str]
-    ) -> None:
-        """Upload files to an existing sandbox."""
-        import modal
-        
-        try:
-            sandbox = modal.Sandbox.from_id(sandbox_id)
-            
-            for filepath, content in file_tree.items():
-                # Create parent directory if needed
-                dir_path = "/".join(filepath.split("/")[:-1])
-                if dir_path:
-                    await self.exec_command(sandbox_id, f"mkdir -p {dir_path}")
-                
-                # Upload file content
-                # Modal doesn't have direct file upload in sandbox API yet
-                # Use exec with cat as workaround
-                escaped_content = content.replace("'", "'\\''")
-                await self.exec_command(
-                    sandbox_id,
-                    f"cat > {filepath} << 'EOF'\n{escaped_content}\nEOF"
-                )
-            
-            logger.info("Files uploaded", sandbox_id=sandbox_id, count=len(file_tree))
-            
-        except Exception as exc:
-            logger.warning("File upload failed", sandbox_id=sandbox_id, error=str(exc))
-    
-    async def restart_app(self, sandbox_id: str, start_cmd: str) -> bool:
-        """Restart the application in a running sandbox."""
-        try:
-            # Kill existing processes on the port
-            await self.exec_command(sandbox_id, "pkill -f node || true")
-            await self.exec_command(sandbox_id, "pkill -f uvicorn || true")
-            
-            # Start the app again
-            result = await self.exec_command(
-                sandbox_id,
-                f"cd /tmp/preview && {start_cmd}",
-                timeout=10
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, self._destroy_sync, sandbox_id
             )
-            
-            return result.get("success", False)
-            
+            logger.info("Sandbox terminated", sandbox_id=sandbox_id)
         except Exception as exc:
-            logger.warning("App restart failed", sandbox_id=sandbox_id, error=str(exc))
-            return False
+            logger.warning("Sandbox terminate failed",
+                           sandbox_id=sandbox_id, error=str(exc))
 
+    def _destroy_sync(self, sandbox_id: str) -> None:
+        import modal
+        sb = modal.Sandbox.from_id(sandbox_id)
+        sb.terminate()
+        sb.detach()
 
-# ── For backward compatibility ─────────────────────────────────
-# Keep the same interface as DaytonaService
+    async def get_sandbox_status(self, sandbox_id: str) -> dict:
+        """Check if sandbox is still running."""
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None, self._status_sync, sandbox_id
+            )
+        except Exception:
+            return {"status": "stopped"}
 
-class SandboxService(ModalSandboxService):
-    """Alias for backward compatibility with existing code."""
-    pass
+    def _status_sync(self, sandbox_id: str) -> dict:
+        import modal
+        sb      = modal.Sandbox.from_id(sandbox_id)
+        stopped = sb.poll()
+        if stopped is None:
+            return {"status": "running", "id": sandbox_id}
+        return {"status": "stopped", "exit_code": stopped}
+
+    async def _upload_files(
+        self,
+        sandbox_id: str,
+        file_tree:  dict[str, str],
+    ) -> None:
+        """Upload files to existing sandbox (for self-heal redeploy)."""
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, self._upload_sync, sandbox_id, file_tree
+            )
+        except Exception as exc:
+            logger.warning("File upload failed", error=str(exc))
+
+    def _upload_sync(self, sandbox_id: str, file_tree: dict[str, str]) -> None:
+        import modal
+        sb = modal.Sandbox.from_id(sandbox_id)
+        for filepath, content in file_tree.items():
+            dir_path = "/".join(filepath.split("/")[:-1])
+            if dir_path:
+                sb.exec("mkdir", "-p", f"/app/{dir_path}")
+            try:
+                sb.fs.write_file(
+                    f"/app/{filepath}",
+                    content.encode("utf-8"),
+                )
+            except Exception as exc:
+                logger.warning("File write failed",
+                               path=filepath, error=str(exc))
+
+    async def _exec_command(self, sandbox_id: str, command: str) -> dict:
+        """Execute command in existing sandbox."""
+        try:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None, self._exec_sync, sandbox_id, command
+            )
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def _exec_sync(self, sandbox_id: str, command: str) -> dict:
+        import modal
+        sb     = modal.Sandbox.from_id(sandbox_id)
+        proc   = sb.exec("bash", "-c",
+                         f"nohup {command} > /tmp/app.log 2>&1 &")
+        return {"output": str(proc)}
