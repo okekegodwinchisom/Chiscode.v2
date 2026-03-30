@@ -60,7 +60,7 @@ dependencies = [
 
     # HTTP Client
     "httpx[http2]==0.28.0",
-    "modal>=0.73.0",
+    "e2b==1.0.0",
 
     # Resilience
     "tenacity==9.0.0",
