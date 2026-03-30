@@ -61,6 +61,7 @@ dependencies = [
     # HTTP Client
     "httpx[http2]==0.27.0",
     "e2b==1.0.0",
+    "e2b-code-interpreter==1.0.0",
 
     # Resilience
     "tenacity==9.0.0",
