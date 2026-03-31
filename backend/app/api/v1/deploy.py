@@ -18,6 +18,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.services.e2b_service import E2BSandboxService
+from app.services.fragments_templates import detect_template, generate_fragments_code
+from app.services.preview_service import generate_static_preview
+
 from app.api.deps import get_current_user
 from app.core.logging import get_logger
 from app.db.mongodb import get_db, projects_collection
@@ -128,13 +132,13 @@ async def create_preview(
     current_user: UserInDB = Depends(get_current_user),
 ):
     """
-    Generate a live preview for the project using Modal sandbox.
+    Generate a live preview for the project using e2b sandbox.
     Falls back to static preview if sandbox creation fails.
     """
     from bson import ObjectId
     from app.core.config import settings
-    from app.services.modal_service import ModalService
-    modal_svc = ModalService()
+    from app.services.e2b_service import ModalService
+    e2b = E2bService()
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -184,7 +188,7 @@ async def create_preview(
 
     except Exception as exc:
         logger.warning(
-            "Modal sandbox failed — falling back to static preview",
+            "e2b sandbox failed — falling back to static preview",
             project_id=project_id,
             error=str(exc)
         )
@@ -268,6 +272,34 @@ async def serve_preview(project_id: str):
         },
     )
 
+@router.get("/projects/{project_id}/preview/status")
+async def get_preview_status(
+    project_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Check if a live preview sandbox is still running."""
+    from bson import ObjectId
+    
+    doc = await projects_collection().find_one({
+        "_id": ObjectId(project_id),
+        "user_id": current_user.id
+    })
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    sandbox_id = doc.get("e2b_sandbox_id")
+    if not sandbox_id:
+        return {"status": "not_available", "type": doc.get("preview_type", "static")}
+    
+    status = await e2b_service.get_sandbox_status(sandbox_id)
+    
+    return {
+        "status": status["status"],
+        "sandbox_id": sandbox_id,
+        "preview_url": doc.get("preview_url"),
+        "expires_at": doc.get("preview_expires_at")
+    }
+    
 
 @router.get("/projects/{project_id}/preview/card")
 async def get_card(
@@ -408,6 +440,22 @@ async def refresh_preview(
     # Create new preview
     return await create_preview(project_id, current_user)
 
+@router.get("/preview/templates")
+async def list_preview_templates():
+    """List all available preview templates (Fragments-inspired)."""
+    from app.services.fragments_templates import PREVIEW_TEMPLATES
+    
+    return {
+        "templates": [
+            {
+                "name": t.name,
+                "language": t.language,
+                "port": t.port,
+                "file_requirements": t.file_requirements
+            }
+            for t in PREVIEW_TEMPLATES
+        ]
+    }
 
 @router.delete("/projects/{project_id}/preview/sandbox")
 async def destroy_preview_sandbox(
