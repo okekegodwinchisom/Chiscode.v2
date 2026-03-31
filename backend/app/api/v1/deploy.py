@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from app.services.e2b_service import E2BService
 from app.services.fragments_templates import detect_template, generate_fragments_code
-from app.services.preview_service import generate_static_preview
+from app.services.preview_service import generate_preview
 
 from app.api.deps import get_current_user
 from app.core.logging import get_logger
