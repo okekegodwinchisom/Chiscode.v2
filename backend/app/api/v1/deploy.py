@@ -195,6 +195,8 @@ async def create_preview(
             "type":         "live",
             "preview_url":  sandbox["preview_url"],
             "sandbox_id":   sandbox["sandbox_id"],
+            "screenshot":    screenshot,
+            "expires_at":   sandbox["expires_at"],
             "port":         sandbox["port"],
         }
 
