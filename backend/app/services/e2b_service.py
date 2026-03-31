@@ -47,8 +47,8 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     
     if has_next_config and has_fastapi_file:
         logger.info("Detected hybrid: Next.js + FastAPI")
+        # E2B starts in /workspace by default - no cd needed
         start_cmd = """
-        cd /home/daytona && \
         pip install -r requirements.txt && \
         uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 & \
         npm install && \
@@ -65,7 +65,6 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     if has_next_config and has_express_file:
         logger.info("Detected hybrid: Next.js + Express")
         start_cmd = """
-        cd /home/daytona && \
         npm install && \
         node server.js > /tmp/backend.log 2>&1 & \
         npm run dev -- --port 3000 --hostname 0.0.0.0
@@ -81,7 +80,6 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     if (has_vite_config or has_react_files) and has_fastapi_file:
         logger.info("Detected hybrid: React + Vite + FastAPI")
         start_cmd = """
-        cd /home/daytona && \
         pip install -r requirements.txt && \
         uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 & \
         npm install && \
@@ -94,7 +92,7 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     # ─────────────────────────────────────────────────────────────
     if has_next_config:
         logger.info("Detected full-stack: Next.js")
-        return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+        return "npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
     
     # Check package.json for Next.js
     if has_package_json:
@@ -104,7 +102,7 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
             dependencies = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
             if "next" in dependencies:
                 logger.info("Detected Next.js from package.json")
-                return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+                return "npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
         except:
             pass
     
@@ -113,61 +111,61 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     # ─────────────────────────────────────────────────────────────
     if "nuxt.config.js" in files or "nuxt.config.ts" in files:
         logger.info("Detected full-stack: Nuxt.js")
-        return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+        return "npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
     
     # ─────────────────────────────────────────────────────────────
     # 6. FULL-STACK: SVELTEKIT
     # ─────────────────────────────────────────────────────────────
     if "svelte.config.js" in files and ("src/routes" in files or "src/app.html" in files):
         logger.info("Detected full-stack: SvelteKit")
-        return "cd /home/daytona && npm install && npm run dev -- --port 5173 --hostname 0.0.0.0", 5173
+        return "npm install && npm run dev -- --port 5173 --hostname 0.0.0.0", 5173
     
     # ─────────────────────────────────────────────────────────────
     # 7. FRONTEND ONLY: REACT (Vite)
     # ─────────────────────────────────────────────────────────────
     if has_vite_config or has_react_files:
         logger.info("Detected frontend: React + Vite")
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+        return "npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
     
     # ─────────────────────────────────────────────────────────────
     # 8. FRONTEND ONLY: VUE (Vite)
     # ─────────────────────────────────────────────────────────────
     if "vue.config.js" in files or "src/App.vue" in files:
         logger.info("Detected frontend: Vue")
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+        return "npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
     
     # ─────────────────────────────────────────────────────────────
     # 9. FRONTEND ONLY: SVELTE
     # ─────────────────────────────────────────────────────────────
     if "svelte.config.js" in files or "src/App.svelte" in files:
         logger.info("Detected frontend: Svelte")
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+        return "npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
     
     # ─────────────────────────────────────────────────────────────
     # 10. FRONTEND ONLY: ANGULAR
     # ─────────────────────────────────────────────────────────────
     if "angular.json" in files:
         logger.info("Detected frontend: Angular")
-        return "cd /home/daytona && npm install && ng serve --host 0.0.0.0 --port 4200", 4200
+        return "npm install && ng serve --host 0.0.0.0 --port 4200", 4200
     
     # ─────────────────────────────────────────────────────────────
     # 11. BACKEND ONLY: FASTAPI
     # ─────────────────────────────────────────────────────────────
     if has_fastapi_file:
         logger.info("Detected backend: FastAPI")
-        return "cd /home/daytona && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
+        return "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
     
     # Check for FastAPI with different file structure
     if "app/main.py" in files:
         logger.info("Detected backend: FastAPI (app/main.py)")
-        return "cd /home/daytona && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000", 8000
+        return "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000", 8000
     
     # ─────────────────────────────────────────────────────────────
     # 12. BACKEND ONLY: DJANGO
     # ─────────────────────────────────────────────────────────────
     if "manage.py" in files:
         logger.info("Detected backend: Django")
-        return "cd /home/daytona && pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
+        return "pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
     
     # ─────────────────────────────────────────────────────────────
     # 13. BACKEND ONLY: FLASK
@@ -176,14 +174,14 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
         content = file_tree.get("app.py", "")
         if "Flask" in content:
             logger.info("Detected backend: Flask")
-            return "cd /home/daytona && pip install -r requirements.txt && python app.py", 5000
+            return "pip install -r requirements.txt && python app.py", 5000
     
     # ─────────────────────────────────────────────────────────────
     # 14. BACKEND ONLY: EXPRESS / NODE.JS
     # ─────────────────────────────────────────────────────────────
     if has_express_file:
         logger.info("Detected backend: Express")
-        return "cd /home/daytona && npm install && node server.js", 3000
+        return "npm install && node server.js", 3000
     
     # Check package.json for Express
     if has_package_json:
@@ -193,7 +191,7 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
             scripts = pkg.get("scripts", {})
             if "start" in scripts and not has_next_config:
                 logger.info("Detected Node.js backend with start script")
-                return "cd /home/daytona && npm install && npm start", 3000
+                return "npm install && npm start", 3000
         except:
             pass
     
@@ -203,7 +201,7 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     if "go.mod" in files:
         if "main.go" in files:
             logger.info("Detected backend: Go")
-            return "cd /home/daytona && go mod download && go run main.go", 8080
+            return "go mod download && go run main.go", 8080
     
     # ─────────────────────────────────────────────────────────────
     # 16. BACKEND ONLY: RUST (Axum)
@@ -211,61 +209,54 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     if "Cargo.toml" in files:
         if "src/main.rs" in files:
             logger.info("Detected backend: Rust")
-            return "cd /home/daytona && cargo run --release", 8080
+            return "cargo run --release", 8080
     
     # ─────────────────────────────────────────────────────────────
     # 17. STATIC: HTML/CSS/JS
     # ─────────────────────────────────────────────────────────────
     if "index.html" in files or any(f.endswith(".html") for f in files):
         logger.info("Detected static: HTML/CSS/JS")
-        return "cd /home/daytona && python3 -m http.server 8080", 8080
+        return "python3 -m http.server 8080", 8080
     
     # ─────────────────────────────────────────────────────────────
     # 18. FALLBACK FROM STACK DICTIONARY
     # ─────────────────────────────────────────────────────────────
     if "next" in frontend:
-        return "cd /home/daytona && npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
+        return "npm install && npm run dev -- --port 3000 --hostname 0.0.0.0", 3000
     if "react" in frontend or "vite" in frontend:
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
+        return "npm install && npm run dev -- --host 0.0.0.0 --port 5173", 5173
     if "vue" in frontend or "nuxt" in frontend:
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0", 3000
+        return "npm install && npm run dev -- --host 0.0.0.0", 3000
     if "svelte" in frontend:
-        return "cd /home/daytona && npm install && npm run dev -- --host 0.0.0.0", 5173
+        return "npm install && npm run dev -- --host 0.0.0.0", 5173
     if "angular" in frontend:
-        return "cd /home/daytona && npm install && ng serve --host 0.0.0.0 --port 4200", 4200
+        return "npm install && ng serve --host 0.0.0.0 --port 4200", 4200
     if "fastapi" in backend or "python" in backend:
         if "main.py" in files:
-            return "cd /home/daytona && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
+            return "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000", 8000
         if "app/main.py" in files:
-            return "cd /home/daytona && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000", 8000
+            return "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000", 8000
     if "express" in backend or "node" in backend:
         if "server.js" in files:
-            return "cd /home/daytona && npm install && node server.js", 3000
-        return "cd /home/daytona && npm install && npm start", 3000
+            return "npm install && node server.js", 3000
+        return "npm install && npm start", 3000
     if "django" in backend:
-        return "cd /home/daytona && pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
+        return "pip install -r requirements.txt && python manage.py runserver 0.0.0.0:8000", 8000
     if "flask" in backend:
-        return "cd /home/daytona && pip install -r requirements.txt && python app.py", 5000
+        return "pip install -r requirements.txt && python app.py", 5000
     
     # ─────────────────────────────────────────────────────────────
     # 19. ULTIMATE FALLBACK
     # ─────────────────────────────────────────────────────────────
     logger.warning("No start command detected, using fallback")
-    return "cd /home/daytona && echo 'No start command detected' && sleep 30", 8080
-# ── Modal Service ──────────────────────────────────────────────
+    return "echo 'No start command detected' && sleep 30", 8080
+    
+# ── E2B Service ────────────────────────────────────────────────
 
-class ModalService:
+class E2BService:
 
     def __init__(self):
-        self.token_id     = settings.modal_token_id
-        self.token_secret = settings.modal_token_secret
-
-    def _get_app(self):
-        import modal
-        return modal.App.lookup(
-            "chiscode-previews",
-            create_if_missing=True,
-        )
+        self.api_key = settings.e2b_api_key
 
     async def create_sandbox(
         self,
@@ -275,25 +266,29 @@ class ModalService:
         stack:        dict,
     ) -> dict:
         """
-        Create a Modal sandbox, write files, start the app.
-        Returns { workspace_id, preview_url, port }
+        Create an E2B sandbox, write all files, start the app.
+        Returns { sandbox_id, preview_url, port }
         """
+        # Patch Vite config so preview URLs work
+        file_tree = _patch_vite_config(file_tree)
+
         start_cmd, port = _detect_start_command(file_tree, stack)
-        logger.info("Creating Modal sandbox",
+
+        logger.info("Creating E2B sandbox",
                     project_id=project_id, cmd=start_cmd, port=port)
 
-        loop    = asyncio.get_running_loop()
-        result  = await loop.run_in_executor(
-            None, self._create_sync, file_tree, stack, start_cmd, port
+        loop   = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, self._create_sync, file_tree, start_cmd, port
         )
 
-        logger.info("Sandbox ready",
-                    sandbox_id=result["workspace_id"],
+        logger.info("E2B sandbox ready",
+                    sandbox_id=result["sandbox_id"],
                     url=result["preview_url"])
 
-        # Schedule auto-shutdown
+        # Schedule auto-kill
         asyncio.create_task(
-            self._auto_shutdown(result["workspace_id"], SANDBOX_ALIVE_SECONDS)
+            self._auto_kill(result["sandbox_id"], SANDBOX_TIMEOUT_SECONDS)
         )
 
         return result
@@ -301,100 +296,92 @@ class ModalService:
     def _create_sync(
         self,
         file_tree: dict[str, str],
-        stack:     dict,
         start_cmd: str,
         port:      int,
     ) -> dict:
         """Synchronous sandbox creation — runs in thread pool."""
-        import modal
+        from e2b import Sandbox
 
-        app   = self._get_app()
-        image = _detect_image(stack, file_tree)
+        # Create sandbox with timeout
+        sandbox    = Sandbox(
+            api_key=self.api_key,
+            timeout=SANDBOX_TIMEOUT_SECONDS + 60,
+        )
+        sandbox_id = sandbox.sandbox_id
 
-        # Create sandbox with tunnel on the app port
-        with modal.enable_output():
-            sandbox = modal.Sandbox.create(
-                app=app,
-                image=image,
-                timeout=SANDBOX_ALIVE_SECONDS + 60,
-                encrypted_ports=[port],
-            )
+        logger.info("E2B sandbox created", sandbox_id=sandbox_id)
 
-        sandbox_id = sandbox.object_id
-        logger.info("Sandbox created", sandbox_id=sandbox_id)
-
-        # ── Write files ───────────────────────────────────────
-        sandbox.exec("mkdir", "-p", "/app")
-
+        # ── Write all project files ───────────────────────────
         for filepath, content in file_tree.items():
-            dir_path = "/".join(filepath.split("/")[:-1])
-            if dir_path:
-                sandbox.exec("mkdir", "-p", f"/app/{dir_path}")
             try:
-                sandbox.fs.write_file(
-                    f"/app/{filepath}",
-                    content.encode("utf-8"),
+                # Ensure parent directory exists
+                dir_path = "/".join(filepath.split("/")[:-1])
+                if dir_path:
+                    sandbox.commands.run(
+                        f"mkdir -p /home/user/{dir_path}",
+                        timeout=10,
+                    )
+                sandbox.files.write(
+                    f"/home/user/{filepath}",
+                    content,
                 )
             except Exception as exc:
                 logger.warning("File write failed",
                                path=filepath, error=str(exc))
 
-        logger.info("Files written", count=len(file_tree))
+        logger.info("Files written to E2B sandbox",
+                    count=len(file_tree))
 
-        # ── Start app ─────────────────────────────────────────
-        sandbox.exec("bash", "-c",
-                     f"nohup {start_cmd} > /tmp/app.log 2>&1 &")
+        # ── Start the app in background ───────────────────────
+        sandbox.commands.run(
+            f"nohup sh -c '{start_cmd}' > /tmp/app.log 2>&1 &",
+            timeout=10,
+        )
 
-        # ── Get tunnel URL ────────────────────────────────────
-        # Wait for tunnels to be available
-        tunnels = sandbox.tunnels(timeout=30)
-        tunnel  = tunnels.get(port)
+        # ── Get public preview URL ────────────────────────────
+        host        = sandbox.get_host(port)
+        preview_url = f"https://{host}"
 
-        if tunnel:
-            preview_url = tunnel.url
-        else:
-            preview_url = f"https://modal-{sandbox_id}-{port}.modal.run"
-
-        # ── Poll until app responds ───────────────────────────
-        import urllib.request
-        deadline = time.time() + 120  # 2 min max
+        # ── Poll until app responds (max 2 minutes) ───────────
+        deadline = time.time() + 120
         while time.time() < deadline:
             time.sleep(5)
             try:
-                req = urllib.request.urlopen(preview_url, timeout=5)
+                req = urllib.request.urlopen(preview_url, timeout=8)
                 if req.status < 500:
+                    logger.info("App responding", url=preview_url)
                     break
             except Exception:
-                pass
+                continue  # still starting up
 
         return {
-            "workspace_id": sandbox_id,
-            "preview_url":  preview_url,
-            "port":         port,
+            "sandbox_id":  sandbox_id,
+            "workspace_id": sandbox_id,  # compat alias
+            "preview_url": preview_url,
+            "port":        port,
         }
 
-    async def _auto_shutdown(self, sandbox_id: str, delay_s: int) -> None:
-        """Auto-terminate sandbox after delay."""
+    async def _auto_kill(self, sandbox_id: str, delay_s: int) -> None:
+        """Kill sandbox after delay."""
         await asyncio.sleep(delay_s)
         await self.destroy_sandbox(sandbox_id)
 
     async def destroy_sandbox(self, sandbox_id: str) -> None:
-        """Terminate a Modal sandbox."""
+        """Kill an E2B sandbox by ID."""
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
-                None, self._destroy_sync, sandbox_id
+                None, self._kill_sync, sandbox_id
             )
-            logger.info("Sandbox terminated", sandbox_id=sandbox_id)
+            logger.info("E2B sandbox killed", sandbox_id=sandbox_id)
         except Exception as exc:
-            logger.warning("Sandbox terminate failed",
+            logger.warning("E2B sandbox kill failed",
                            sandbox_id=sandbox_id, error=str(exc))
 
-    def _destroy_sync(self, sandbox_id: str) -> None:
-        import modal
-        sb = modal.Sandbox.from_id(sandbox_id)
-        sb.terminate()
-        sb.detach()
+    def _kill_sync(self, sandbox_id: str) -> None:
+        from e2b import Sandbox
+        sandbox = Sandbox.connect(sandbox_id, api_key=self.api_key)
+        sandbox.kill()
 
     async def get_sandbox_status(self, sandbox_id: str) -> dict:
         """Check if sandbox is still running."""
@@ -407,12 +394,13 @@ class ModalService:
             return {"status": "stopped"}
 
     def _status_sync(self, sandbox_id: str) -> dict:
-        import modal
-        sb      = modal.Sandbox.from_id(sandbox_id)
-        stopped = sb.poll()
-        if stopped is None:
+        from e2b import Sandbox
+        try:
+            sandbox = Sandbox.connect(sandbox_id, api_key=self.api_key)
+            # If connect succeeds the sandbox is running
             return {"status": "running", "id": sandbox_id}
-        return {"status": "stopped", "exit_code": stopped}
+        except Exception:
+            return {"status": "stopped"}
 
     async def _upload_files(
         self,
@@ -426,25 +414,32 @@ class ModalService:
                 None, self._upload_sync, sandbox_id, file_tree
             )
         except Exception as exc:
-            logger.warning("File upload failed", error=str(exc))
+            logger.warning("E2B file upload failed", error=str(exc))
 
-    def _upload_sync(self, sandbox_id: str, file_tree: dict[str, str]) -> None:
-        import modal
-        sb = modal.Sandbox.from_id(sandbox_id)
+    def _upload_sync(
+        self,
+        sandbox_id: str,
+        file_tree:  dict[str, str],
+    ) -> None:
+        from e2b import Sandbox
+        sandbox = Sandbox.connect(sandbox_id, api_key=self.api_key)
         for filepath, content in file_tree.items():
-            dir_path = "/".join(filepath.split("/")[:-1])
-            if dir_path:
-                sb.exec("mkdir", "-p", f"/app/{dir_path}")
             try:
-                sb.fs.write_file(
-                    f"/app/{filepath}",
-                    content.encode("utf-8"),
-                )
+                dir_path = "/".join(filepath.split("/")[:-1])
+                if dir_path:
+                    sandbox.commands.run(
+                        f"mkdir -p /home/user/{dir_path}", timeout=10
+                    )
+                sandbox.files.write(f"/home/user/{filepath}", content)
             except Exception as exc:
                 logger.warning("File write failed",
                                path=filepath, error=str(exc))
 
-    async def _exec_command(self, sandbox_id: str, command: str) -> dict:
+    async def _exec_command(
+        self,
+        sandbox_id: str,
+        command:    str,
+    ) -> dict:
         """Execute command in existing sandbox."""
         try:
             loop = asyncio.get_running_loop()
@@ -455,8 +450,10 @@ class ModalService:
             return {"error": str(exc)}
 
     def _exec_sync(self, sandbox_id: str, command: str) -> dict:
-        import modal
-        sb     = modal.Sandbox.from_id(sandbox_id)
-        proc   = sb.exec("bash", "-c",
-                         f"nohup {command} > /tmp/app.log 2>&1 &")
-        return {"output": str(proc)}
+        from e2b import Sandbox
+        sandbox = Sandbox.connect(sandbox_id, api_key=self.api_key)
+        result  = sandbox.commands.run(
+            f"nohup sh -c '{command}' > /tmp/app.log 2>&1 &",
+            timeout=10,
+        )
+        return {"output": result.stdout}
