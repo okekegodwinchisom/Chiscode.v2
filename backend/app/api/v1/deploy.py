@@ -137,7 +137,7 @@ async def create_preview(
     """
     from bson import ObjectId
     from app.core.config import settings
-    from app.services.e2b_service import ModalService
+    from app.services.e2b_service import E2bService
     e2b = E2bService()
 
     doc = await projects_collection().find_one({
@@ -150,6 +150,15 @@ async def create_preview(
     file_tree    = doc.get("file_tree", {})
     stack        = doc.get("stack", {})
     project_name = doc.get("name", "app")
+
+      # Detect template (Fragments-inspired)
+    template = detect_template(file_tree, stack)
+    logger.info(
+        "Preview template detected",
+        project_id=project_id,
+        template=template.name,
+        port=template.port
+    )
 
     # ── Try e2b sandbox first ─────────────────────────────────────
     try:
@@ -169,6 +178,9 @@ async def create_preview(
                 "e2b_sandbox_id":     sandbox["sandbox_id"],
                 "preview_type":         "live",
                 "preview_updated_at":   __import__("datetime").datetime.utcnow().isoformat(),
+                "preview_expires_at": sandbox["expires_at"],
+                "preview_screenshot": screenshot,
+                "preview_template": template.name
             }},
         )
         
