@@ -147,9 +147,9 @@ async def create_preview(
     stack        = doc.get("stack", {})
     project_name = doc.get("name", "app")
 
-    # ── Try Modal sandbox first ─────────────────────────────────────
+    # ── Try e2b sandbox first ─────────────────────────────────────
     try:
-        sandbox   = await modal_svc.create_sandbox(
+        sandbox   = await e2b.create_sandbox(
             project_id=project_id,
             project_name=project_name,
             file_tree=file_tree,
@@ -162,14 +162,14 @@ async def create_preview(
             {"_id": ObjectId(project_id)},
             {"$set": {
                 "preview_url":          sandbox["preview_url"],
-                "modal_sandbox_id":     sandbox["sandbox_id"],
+                "e2b_sandbox_id":     sandbox["sandbox_id"],
                 "preview_type":         "live",
                 "preview_updated_at":   __import__("datetime").datetime.utcnow().isoformat(),
             }},
         )
         
         logger.info(
-            "Modal sandbox preview created",
+            "e2b sandbox preview created",
             project_id=project_id,
             sandbox_id=sandbox["sandbox_id"],
             preview_url=sandbox["preview_url"]
@@ -334,8 +334,8 @@ async def get_live_preview_url(
     otherwise fall back to the static HTML preview.
     """
     from bson import ObjectId
-    from app.services.modal_service import ModalService
-    modal_svc = ModalService()
+    from app.services.e2b_service import E2bService
+    e2b = E2bService()
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -344,7 +344,7 @@ async def get_live_preview_url(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    # Check if Modal sandbox is still alive
+    # Check if e2b sandbox is still alive
     modal_url          = doc.get("preview_url", "")
     modal_sandbox_id   = doc.get("modal_sandbox_id", "")
 
@@ -359,7 +359,7 @@ async def get_live_preview_url(
                 }
             else:
                 logger.info(
-                    "Modal sandbox no longer running",
+                    "e2b sandbox no longer running",
                     project_id=project_id,
                     sandbox_id=modal_sandbox_id,
                     status=status.get("status")
@@ -397,7 +397,7 @@ async def refresh_preview(
         raise HTTPException(status_code=404, detail="Project not found.")
     
     # Clean up existing sandbox if present
-    existing_sandbox_id = doc.get("modal_sandbox_id")
+    existing_sandbox_id = doc.get("e2b_sandbox_id")
     if existing_sandbox_id:
         try:
             await sandbox_service.destroy_sandbox(existing_sandbox_id)
@@ -427,7 +427,7 @@ async def destroy_preview_sandbox(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found.")
     
-    sandbox_id = doc.get("modal_sandbox_id")
+    sandbox_id = doc.get("eb2_sandbox_id")
     if not sandbox_id:
         return {"message": "No sandbox found for this project"}
     
