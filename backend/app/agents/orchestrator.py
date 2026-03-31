@@ -356,10 +356,11 @@ async def node_playwright_test(state: ProjectState) -> ProjectState:
     workspace_id = None
     preview_url  = None
 
+    
     try:
-        from app.services.daytona_service import DaytonaService
-        daytona  = DaytonaService()
-        sandbox  = await daytona.create_sandbox(
+        from app.services.e2b_service import E2bService, _detect_start_command
+        e2b  = E2bService()
+        sandbox  = await e2b.create_sandbox(
             project_id=project_id,
             project_name=project_name,
             file_tree=file_tree,
@@ -458,14 +459,14 @@ async def node_playwright_test(state: ProjectState) -> ProjectState:
         # ── Redeploy fixed files to same sandbox ──────────────
         try:
             await _push(state, "log", message="♻ Redeploying fixed files...")
-            from app.services.daytona_service import (
-                DaytonaService,
+            from app.services.e2b_service import (
+                E2bService,
                 _detect_start_command,
             )
-            daytona   = DaytonaService()
-            await daytona._upload_files(workspace_id, current_file_tree)
+            E2b   = DaytonaService()
+            await e2b._upload_files(workspace_id, current_file_tree)
             start_cmd, _ = _detect_start_command(current_file_tree, stack)
-            await daytona._exec_command(workspace_id, start_cmd)
+            await e2b._exec_command(workspace_id, start_cmd)
             await asyncio.sleep(5)  # wait for restart
 
         except Exception as exc:
