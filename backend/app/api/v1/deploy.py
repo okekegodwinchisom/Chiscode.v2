@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.services.e2b_service import E2BSandboxService
+from app.services.e2b_service import E2BService
 from app.services.fragments_templates import detect_template, generate_fragments_code
 from app.services.preview_service import generate_static_preview
 
