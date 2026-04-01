@@ -138,7 +138,7 @@ async def create_preview(
     from bson import ObjectId
     from app.core.config import settings
     from app.services.e2b_service import E2BService
-    e2b = E2bService()
+    e2b = E2BService()
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
