@@ -137,7 +137,7 @@ async def create_preview(
     """
     from bson import ObjectId
     from app.core.config import settings
-    from app.services.e2b_service import E2bService
+    from app.services.e2b_service import E2BService
     e2b = E2bService()
 
     doc = await projects_collection().find_one({
@@ -380,8 +380,8 @@ async def get_live_preview_url(
     otherwise fall back to the static HTML preview.
     """
     from bson import ObjectId
-    from app.services.e2b_service import E2bService
-    e2b = E2bService()
+    from app.services.e2b_service import E2BService
+    e2b = E2BService()
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -391,28 +391,28 @@ async def get_live_preview_url(
         raise HTTPException(status_code=404, detail="Project not found.")
 
     # Check if e2b sandbox is still alive
-    modal_url          = doc.get("preview_url", "")
-    modal_sandbox_id   = doc.get("modal_sandbox_id", "")
+    e2b_url          = doc.get("preview_url", "")
+    e2b_sandbox_id   = doc.get("modal_sandbox_id", "")
 
-    if modal_url and modal_sandbox_id:
+    if e2b_url and e2b_sandbox_id:
         try:
-            status = await modal_svc.get_sandbox_status(modal_sandbox_id)
+            status = await e2b.get_sandbox_status(e2b_sandbox_id)
             if status.get("status") in ("running", "started"):
                 return {
-                    "url":  modal_url,
+                    "url":  e2b_url,
                     "type": "live",
-                    "sandbox_id": modal_sandbox_id
+                    "sandbox_id": e2b_sandbox_id
                 }
             else:
                 logger.info(
                     "e2b sandbox no longer running",
                     project_id=project_id,
-                    sandbox_id=modal_sandbox_id,
+                    sandbox_id=e2b_sandbox_id,
                     status=status.get("status")
                 )
         except Exception as exc:
             logger.warning(
-                "Failed to check Modal sandbox status",
+                "Failed to check e2b sandbox status",
                 project_id=project_id,
                 error=str(exc)
             )
