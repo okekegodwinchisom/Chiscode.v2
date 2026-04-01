@@ -6,6 +6,9 @@ Each template defines how to run a specific type of project.
 """
 
 from typing import Dict, List, Optional
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class PreviewTemplate:
     """Base template for preview configurations."""
@@ -74,6 +77,16 @@ PREVIEW_TEMPLATES = [
         dependencies_install="pip install -r requirements.txt",
         file_requirements=["app.py"]
     ),
+
+    PreviewTemplate(
+        name="sveltekit",
+        language="typescript",
+        start_command="npm run dev -- --port 5173 --hostname 0.0.0.0",
+        port=5173,
+        dependencies_install="npm install",
+        file_requirements=["svelte.config.js", "package.json", "src/routes"]
+    ),
+    
     PreviewTemplate(
         name="gradio",
         language="python",
