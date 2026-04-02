@@ -250,6 +250,67 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     # ─────────────────────────────────────────────────────────────
     logger.warning("No start command detected, using fallback")
     return "echo 'No start command detected' && sleep 30", 8080
+
+def _patch_vite_config(file_tree: dict) -> dict:
+    """
+    Patch vite.config.js/ts to allow E2B proxy hostnames.
+    Prevents 'host not allowed' 403 errors in Vite dev server.
+    """
+    vite_key = None
+    for key in ("vite.config.js", "vite.config.ts"):
+        if key in file_tree:
+            vite_key = key
+            break
+
+    # Also handle SvelteKit — vite config is inside svelte.config.js
+    # but Vite server options go in a separate vite.config file
+    # For SvelteKit, patch svelte.config.js vite server block
+    if not vite_key and "svelte.config.js" in file_tree:
+        content = file_tree["svelte.config.js"]
+        if "allowedHosts" not in content:
+            file_tree = dict(file_tree)
+            file_tree["vite.config.js"] = """import { defineConfig } from 'vite';
+import { sveltekit } from '@sveltejs/kit/vite';
+
+export default defineConfig({
+  plugins: [sveltekit()],
+  server: {
+    host: '0.0.0.0',
+    allowedHosts: ['.e2b.app', '.e2b.dev', 'all'],
+  },
+});
+"""
+        return file_tree
+
+    if not vite_key:
+        return file_tree
+
+    content = file_tree[vite_key]
+    if "allowedHosts" in content:
+        return file_tree  # already patched
+
+    file_tree = dict(file_tree)
+
+    # Try to inject into existing server block
+    if "server:" in content or "server: {" in content:
+        patched = content.replace(
+            "server: {",
+            "server: {\n      allowedHosts: ['.e2b.app', '.e2b.dev', 'all'],",
+            1,
+        )
+    elif "defineConfig({" in content:
+        # Inject a server block
+        patched = content.replace(
+            "defineConfig({",
+            "defineConfig({\n  server: { host: '0.0.0.0', "
+            "allowedHosts: ['.e2b.app', '.e2b.dev', 'all'] },",
+            1,
+        )
+    else:
+        patched = content  # can't patch safely, leave as-is
+
+    file_tree[vite_key] = patched
+    return file_tree    
     
 # ── E2B Service ────────────────────────────────────────────────
 
