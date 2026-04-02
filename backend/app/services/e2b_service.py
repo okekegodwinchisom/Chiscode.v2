@@ -417,10 +417,11 @@ class E2BService:
 
         # ── Start the app ─────────────────────────────────────────────
         sandbox.commands.run(
-            f"bash -c 'cd /home/user && "
-            f"{start_cmd.replace('cd /home/user && ', '')} "
-            f"> /tmp/app.log 2>&1 &'",
-            timeout=10,
+            "bash",
+            "-c",
+            f"cd /home/user && {start_cmd.replace('cd /home/user && ', '')} > /tmp/app.log 2>&1",
+            background=True,
+            timeout=5,
         )
 
         # ── Get public preview URL ────────────────────────────────────
