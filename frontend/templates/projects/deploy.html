@@ -283,11 +283,19 @@ function showLivePreview(url) {
   link.href          = url;
   box.style.display  = 'block';
 
+  // Add starting note
+  document.querySelector('.live-preview-box__desc').innerHTML =
+    'Sandbox is live. App may take <strong>~60 seconds</strong> to finish ' +
+    'installing dependencies — reload the tab if you see an error.';
+
+  return;
+
   // Auto-open in new tab
   window.open(url, '_blank', 'noopener,noreferrer');
 
   document.getElementById('preview-btn').textContent = 'Refresh Preview';
 }
+
 
 // ── Show static iframe preview ────────────────────────────────
 function showStaticPreview(iframeUrl) {
