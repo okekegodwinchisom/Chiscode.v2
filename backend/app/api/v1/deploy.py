@@ -131,14 +131,7 @@ async def create_preview(
     project_id:   str,
     current_user: UserInDB = Depends(get_current_user),
 ):
-    """
-    Generate a live preview for the project using e2b sandbox.
-    Falls back to static preview if sandbox creation fails.
-    """
     from bson import ObjectId
-    from app.core.config import settings
-    from app.services.e2b_service import E2BService
-    e2b = E2BService()
 
     doc = await projects_collection().find_one({
         "_id":     ObjectId(project_id),
@@ -151,83 +144,44 @@ async def create_preview(
     stack        = doc.get("stack", {})
     project_name = doc.get("name", "app")
 
-      # Detect template (Fragments-inspired)
-    template = detect_template(file_tree, stack)
-    logger.info(
-        "Preview template detected",
-        project_id=project_id,
-        template=template.name,
-        port=template.port
-    )
-
-    # ── Try e2b sandbox first ─────────────────────────────────────
+    # ── Try E2B first ─────────────────────────────────────────
     try:
-        sandbox   = await e2b.create_sandbox(
+        from app.services.e2b_service import E2BService
+        e2b     = E2BService()
+        sandbox = await e2b.create_sandbox(
             project_id=project_id,
             project_name=project_name,
             file_tree=file_tree,
             stack=stack,
         )
-        
-        
-        # Save live URL and sandbox ID to project
         await projects_collection().update_one(
             {"_id": ObjectId(project_id)},
             {"$set": {
-                "preview_url":          sandbox["preview_url"],
-                "e2b_sandbox_id":     sandbox["sandbox_id"],
-                "preview_type":         "live",
-                "preview_updated_at":   __import__("datetime").datetime.utcnow().isoformat(),
-                "preview_expires_at": sandbox["expires_at"],
-                "preview_screenshot": screenshot,
-                "preview_template": template.name
+                "preview_url":  sandbox["preview_url"],
+                "sandbox_id":   sandbox["sandbox_id"],
             }},
         )
-        
-        logger.info(
-            "e2b sandbox preview created",
-            project_id=project_id,
-            sandbox_id=sandbox["sandbox_id"],
-            preview_url=sandbox["preview_url"]
-        )
-        
         return {
-            "type":         "live",
-            "preview_url":  sandbox["preview_url"],
-            "sandbox_id":   sandbox["sandbox_id"],
-            "screenshot":    screenshot,
-            "expires_at":   sandbox["expires_at"],
-            "port":         sandbox["port"],
+            "type":        "live",
+            "preview_url": sandbox["preview_url"],
+            "sandbox_id":  sandbox["sandbox_id"],
         }
 
     except Exception as exc:
-        logger.warning(
-            "e2b sandbox failed — falling back to static preview",
-            project_id=project_id,
-            error=str(exc)
-        )
+        # Log the FULL error so we can see why E2B failed
+        logger.warning("E2B sandbox failed — falling back to static preview",
+                       error=str(exc), exc_info=True)
 
-    # ── Fallback to static preview ────────────────────────────
+    # ── Fallback: static HTML preview ─────────────────────────
+    from app.core.config import settings
     info = await generate_preview(
         project_id=project_id,
         file_tree=file_tree,
         stack=stack,
         project_name=project_name,
-        base_url=settings.frontend_base_url,
     )
-    
-    # Store that we're using static preview
-    await projects_collection().update_one(
-        {"_id": ObjectId(project_id)},
-        {"$set": {
-            "preview_type": "static",
-            "preview_updated_at": __import__("datetime").datetime.utcnow().isoformat(),
-        }},
-    )
-    
     return info.model_dump()
-
-
+    
 @router.get("/preview/{project_id}", response_class=HTMLResponse)
 async def serve_preview(project_id: str):
     """
