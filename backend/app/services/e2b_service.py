@@ -393,31 +393,24 @@ class E2BService:
         logger.info("Files written to E2B sandbox",
                     count=len(file_tree))
 
-        # ── Start the app in background ───────────────────────
+        # ── Start the app in background ───────────────────────────────
         sandbox.commands.run(
             f"nohup sh -c '{start_cmd}' > /tmp/app.log 2>&1 &",
             timeout=10,
         )
 
-        # ── Get public preview URL ────────────────────────────
+        # ── Get public preview URL ────────────────────────────────────
         host        = sandbox.get_host(port)
         preview_url = f"https://{host}"
 
-        # ── Poll until app responds (max 2 minutes) ───────────
-        deadline = time.time() + 120
-        while time.time() < deadline:
-            time.sleep(5)
-            try:
-                req = urllib.request.urlopen(preview_url, timeout=8)
-                if req.status < 500:
-                    logger.info("App responding", url=preview_url)
-                    break
-            except Exception:
-                continue  # still starting up
+        # Don't poll here — return immediately
+        # The app will be ready in ~60s, user opens it from the button
+        logger.info("E2B sandbox ready — app starting",
+                    sandbox_id=sandbox_id, url=preview_url)
 
         return {
             "sandbox_id":  sandbox_id,
-            "workspace_id": sandbox_id,  # compat alias
+            "workspace_id": sandbox_id,
             "preview_url": preview_url,
             "port":        port,
         }
