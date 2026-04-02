@@ -327,17 +327,27 @@ async function refreshPreview() {
 
     const info = await res.json();
 
-    // In refreshPreview(), after opening the tab:
     if (info.type === 'live' && info.preview_url) {
+      // Open blank tab immediately
       if (newTab) newTab.location.href = info.preview_url;
-      showLivePreview(info.preview_url);
 
-    // Show countdown if app might still be starting
-    const desc = document.querySelector('.live-preview-box__desc');
-    if (desc) {
-      desc.innerHTML = '✅ Sandbox live — app is ready.';
+      // Show live box with "starting" note
+      document.getElementById('preview-placeholder').style.display = 'none';
+      document.getElementById('preview-container').style.display   = 'block';
+
+      const box  = document.getElementById('live-preview-box');
+      const link = document.getElementById('live-preview-link');
+      link.href         = info.preview_url;
+      box.style.display = 'block';
+
+      // Add starting note
+      document.querySelector('.live-preview-box__desc').innerHTML =
+        'Sandbox is live. App may take <strong>~60 seconds</strong> to finish ' +
+        'installing dependencies — reload the tab if you see an error.';
+
+      return;
     }
-  }
+    
     // Static HTML preview
     if (info.preview_type === 'live' && info.iframe_url) {
       showStaticPreview(info.iframe_url + '?t=' + Date.now());
