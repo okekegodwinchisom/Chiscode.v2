@@ -327,12 +327,17 @@ async function refreshPreview() {
 
     const info = await res.json();
 
-    // Daytona live sandbox
+    // In refreshPreview(), after opening the tab:
     if (info.type === 'live' && info.preview_url) {
+      if (newTab) newTab.location.href = info.preview_url;
       showLivePreview(info.preview_url);
-      return;
-    }
 
+    // Show countdown if app might still be starting
+    const desc = document.querySelector('.live-preview-box__desc');
+    if (desc) {
+      desc.innerHTML = '✅ Sandbox live — app is ready.';
+    }
+  }
     // Static HTML preview
     if (info.preview_type === 'live' && info.iframe_url) {
       showStaticPreview(info.iframe_url + '?t=' + Date.now());
