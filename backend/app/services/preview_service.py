@@ -125,58 +125,23 @@ async def generate_preview(
     file_tree:    dict[str, str],
     stack:        dict,
     project_name: str = "",
-    base_url:     str = "",
+    base_url:     str = "",  # kept for signature compat, no longer used
 ) -> PreviewInfo:
-    """
-    Analyse the file tree and generate the best possible preview.
-    For HTML projects, also runs Playwright to capture a screenshot.
-    Stores preview HTML in MongoDB for serving.
-    """
     analysis = _analyse_project(file_tree, stack)
     expires  = datetime.now(tz=timezone.utc) + timedelta(hours=6)
-
-    screenshot_b64    = None
-    console_errors    = None
-    playwright_tested = False
 
     if analysis["has_html"]:
         preview_html = _build_live_preview(file_tree, analysis, project_name)
         preview_type = "live"
         iframe_url   = f"/api/v1/preview/{project_id}"
         card_data    = None
-
-        # ── Playwright screenshot (only if base_url provided) ──
-        if base_url:
-            full_preview_url = f"{base_url.rstrip('/')}/api/v1/preview/{project_id}"
-            logger.info("Running Playwright on preview", url=full_preview_url)
-
-            pw_result = await _run_playwright_on_preview(full_preview_url)
-
-            if pw_result.get("success"):
-                screenshot_b64    = pw_result.get("screenshot_b64")
-                console_errors    = pw_result.get("console_errors", [])
-                playwright_tested = True
-
-                if console_errors:
-                    logger.warning(
-                        "Preview has console errors",
-                        project_id=project_id,
-                        errors=console_errors[:3],
-                    )
-                else:
-                    logger.info("Playwright test passed", project_id=project_id)
-            else:
-                logger.info(
-                    "Playwright skipped",
-                    reason=pw_result.get("reason", "unknown"),
-                )
     else:
         preview_type = "card"
         card_data    = _build_card_data(analysis, project_name, stack)
-        preview_html = _build_card_html(card_data, project_name, analysis)  # ← always build HTML
-        iframe_url   = f"/api/v1/preview/{project_id}"  # ← always set URL
-    
-    # ── Store in MongoDB ──
+        preview_html = _build_card_html(card_data, project_name, analysis)
+        iframe_url   = f"/api/v1/preview/{project_id}"
+
+    # Store in MongoDB
     await get_db()["previews"].replace_one(
         {"project_id": project_id},
         {
@@ -185,44 +150,34 @@ async def generate_preview(
             "preview_html":      preview_html,
             "card_data":         card_data,
             "analysis":          analysis,
-            "screenshot_b64":    screenshot_b64,
-            "console_errors":    console_errors,
-            "playwright_tested": playwright_tested,
+            "screenshot_b64":    None,
+            "console_errors":    None,
+            "playwright_tested": False,
             "expires_at":        expires,
             "created_at":        datetime.now(tz=timezone.utc),
         },
         upsert=True,
     )
 
-    # ── Save screenshot to project doc too ──
-    if screenshot_b64:
-        await get_db()["projects"].update_one(
-            {"project_id": project_id},
-            {"$set": {"preview_screenshot": screenshot_b64}},
-        )
-
-    logger.info(
-        "Preview generated",
-        project_id=project_id,
-        type=preview_type,
-        files=len(file_tree),
-        playwright=playwright_tested,
-    )
+    logger.info("Preview generated",
+                project_id=project_id,
+                type=preview_type,
+                files=len(file_tree),
+                playwright=False)
 
     return PreviewInfo(
         project_id=project_id,
         preview_type=preview_type,
         iframe_url=iframe_url,
         card_data=card_data,
-        screenshot_b64=screenshot_b64,
-        console_errors=console_errors,
-        playwright_tested=playwright_tested,
+        screenshot_b64=None,
+        console_errors=None,
+        playwright_tested=False,
         expires_at=expires,
         file_count=len(file_tree),
         primary_lang=analysis["primary_lang"],
         entry_point=analysis.get("entry_point"),
     )
-
 
 async def get_preview_html(project_id: str) -> str | None:
     """Retrieve stored preview HTML for serving."""
