@@ -415,13 +415,13 @@ class E2BService:
                 timeout=60,
             )
 
-       # ── Start the app ─────────────────────────────────────────────
-       sandbox.commands.run(
-           f"bash -c 'cd /home/user && "
-           f"{start_cmd.replace('cd /home/user && ', '')} "
-           f"> /tmp/app.log 2>&1 &'",
-           timeout=10,
-       )
+        # ── Start the app ─────────────────────────────────────────────
+        sandbox.commands.run(
+            f"bash -c 'cd /home/user && "
+            f"{start_cmd.replace('cd /home/user && ', '')} "
+            f"> /tmp/app.log 2>&1 &'",
+            timeout=10,
+        )
 
         # ── Get public preview URL ────────────────────────────────────
         host        = sandbox.get_host(port)
