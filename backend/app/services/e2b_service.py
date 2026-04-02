@@ -394,10 +394,33 @@ class E2BService:
                     count=len(file_tree))
 
         # ── Start the app using a background session ──────────────────
-        # Use E2B's background=True so the process keeps running
+        # ── Install Node.js if needed ─────────────────────────────────
+        frontend = (stack.get("frontend") or "").lower()
+        backend  = (stack.get("backend")  or "").lower()
+        needs_node = any(x in frontend for x in ("svelte", "react", "vue", "next", "vite"))
+
+        if needs_node:
+            logger.info("Installing Node.js", sandbox_id=sandbox_id)
+            sandbox.commands.run(
+                "bash -c 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - "
+                "&& apt-get install -y nodejs'",
+                timeout=120,
+            )
+
+        # ── Install Python deps if needed ─────────────────────────────
+        needs_python = any(x in backend for x in ("fastapi", "python", "django"))
+        if needs_python:
         sandbox.commands.run(
-            f"cd /home/user && {start_cmd.replace('cd /home/user && ', '')}",
-            background=True,  # non-blocking, process survives
+             "pip install uvicorn fastapi httpx",
+             timeout=60,
+        )
+
+       # ── Start the app ─────────────────────────────────────────────
+       sandbox.commands.run(
+            f"bash -c 'cd /home/user && "
+            f"{start_cmd.replace('cd /home/user && ', '')} "
+            f"> /tmp/app.log 2>&1 &'",
+            timeout=10,
         )
 
         # ── Get public preview URL ────────────────────────────────────
