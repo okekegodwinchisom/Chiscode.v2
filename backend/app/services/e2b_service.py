@@ -410,10 +410,10 @@ class E2BService:
         # ── Install Python deps if needed ─────────────────────────────
         needs_python = any(x in backend for x in ("fastapi", "python", "django"))
         if needs_python:
-        sandbox.commands.run(
-             "pip install uvicorn fastapi httpx",
-             timeout=60,
-        )
+            sandbox.commands.run(
+                "pip install uvicorn fastapi httpx",
+                timeout=60,
+            )
 
        # ── Start the app ─────────────────────────────────────────────
        sandbox.commands.run(
