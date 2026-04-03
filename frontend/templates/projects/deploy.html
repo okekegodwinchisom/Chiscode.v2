@@ -329,9 +329,9 @@ async function refreshPreview() {
     const info = await res.json();
 
     if (info.type === 'live' && info.preview_url) {
-    // Open in new tab
-    previewTab = window.open(info.preview_url, '_blank');
-      
+      // Open blank tab immediately
+      if (newTab) newTab.location.href = info.preview_url;
+
       // Show live box with "starting" note
       document.getElementById('preview-placeholder').style.display = 'none';
       document.getElementById('preview-container').style.display   = 'block';
@@ -342,13 +342,12 @@ async function refreshPreview() {
       box.style.display = 'block';
 
       // Add starting note
-      document.querySelector('.live-preview-box__desc').innerHTML =
+      document.querySelectordocument.querySelector('.live-preview-box__desc').innerHTML =
         'Sandbox is live. App may take <strong>~60 seconds</strong> to finish ' +
         'installing dependencies — reload the tab if you see an error.';
 
       return;
     }
-    
 
     // Fallback — try serving static preview directly
     showStaticPreview(API + '/preview/' + projectId + '?t=' + Date.now());
