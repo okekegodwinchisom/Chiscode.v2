@@ -340,7 +340,7 @@ class E2BService:
 
         loop   = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, self._create_sync, file_tree, stack, start_cmd, port
+            None, self._create_sync, file_tree, start_cmd, port, stack,
         )
 
         logger.info("E2B sandbox ready",
@@ -358,8 +358,8 @@ class E2BService:
         self,
         file_tree: dict[str, str],
         start_cmd: str,
-        stack:     dict,
         port:      int,
+        stack:     dict,
     ) -> dict:
         """Synchronous sandbox creation — runs in thread pool."""
         from e2b import Sandbox
