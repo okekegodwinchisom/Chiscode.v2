@@ -297,19 +297,6 @@ function showLivePreview(url) {
 }
 
 
-// ── Show static iframe preview ────────────────────────────────
-function showStaticPreview(iframeUrl) {
-  document.getElementById('preview-placeholder').style.display = 'none';
-  document.getElementById('preview-container').style.display   = 'block';
-  document.getElementById('live-preview-box').style.display    = 'none';
-
-  const iframe       = document.getElementById('preview-iframe');
-  iframe.src         = iframeUrl;
-  iframe.style.display = 'block';
-
-  document.getElementById('preview-btn').textContent = 'Refresh Preview';
-}
-
 
 async function refreshPreview() {
   const btn = document.getElementById('preview-btn');
