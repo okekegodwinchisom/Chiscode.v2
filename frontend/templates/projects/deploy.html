@@ -313,76 +313,53 @@ function showStaticPreview(iframeUrl) {
 
 async function refreshPreview() {
   const btn = document.getElementById('preview-btn');
-  btn.disabled    = true;
-  btn.textContent = 'Generating…';
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Starting sandbox...';
 
-  // Show loading state in preview area immediately
-  document.getElementById('preview-placeholder').style.display = 'none';
-  document.getElementById('preview-container').style.display   = 'block';
-  document.getElementById('live-preview-box').style.display    = 'none';
-  document.getElementById('preview-iframe').style.display      = 'none';
-
-  // Show spinner while waiting
-  let loadingEl = document.getElementById('preview-loading-msg');
-  if (!loadingEl) {
-    loadingEl = document.createElement('div');
-    loadingEl.id = 'preview-loading-msg';
-    loadingEl.style.cssText = [
-      'padding:2rem',
-      'text-align:center',
-      'border:1px dashed var(--border)',
-      'border-radius:12px',
-      'color:var(--ghost)',
-      'font-family:var(--font-code)',
-      'font-size:.82rem',
-    ].join(';');
-    document.getElementById('preview-container').prepend(loadingEl);
-  }
-  loadingEl.style.display = 'block';
-  loadingEl.innerHTML = `
-    <div style="font-size:1.5rem;margin-bottom:.75rem;
-                animation:spin 1.2s linear infinite;display:inline-block">⟳</div>
-    <div style="color:var(--electric);font-weight:700;margin-bottom:.4rem">
-      Spinning up sandbox…
-    </div>
-    <div style="color:var(--muted);font-size:.75rem">
-      Installing dependencies &amp; starting dev server
-    </div>
-  `;
-
-  // Open blank tab immediately — before any await
-  // so popup blocker doesn't kill it
-  const newTab = window.open('', '_blank');
+  // Show loading state in preview area
+  showPreviewLoading('Starting sandbox, please wait...');
 
   try {
+    // Step 1: Create the sandbox
     const res = await apiFetch('/projects/' + projectId + '/preview',
                                { method: 'POST' });
-
-    // Hide spinner
-    loadingEl.style.display = 'none';
-
+    
     if (!res?.ok) {
-      newTab?.close();
-      document.getElementById('preview-placeholder').style.display = 'block';
-      document.getElementById('preview-container').style.display   = 'none';
+      const errorData = await res.json().catch(() => ({}));
+      showPreviewError(errorData.message || 'Failed to create preview sandbox');
+      btn.disabled = false;
+      btn.textContent = originalText;
       return;
     }
 
     const info = await res.json();
 
-    // ── Live Daytona/E2B sandbox ──────────────────────────
     if (info.type === 'live' && info.preview_url) {
-      // Navigate the already-open tab to the live URL
-      if (newTab) {
-        newTab.location.href = info.preview_url;
+      // Step 2: Wait for sandbox to be ready before redirecting
+      btn.textContent = 'Waiting for sandbox...';
+      showPreviewLoading('Sandbox created. Waiting for app to start...', info.preview_url);
+      
+      const isReady = await waitForSandboxReady(info.preview_url);
+      
+      if (isReady) {
+        // Step 3: Sandbox is ready - open the URL
+        const newTab = window.open(info.preview_url, '_blank');
+        if (!newTab) {
+          // Popup blocked - show link manually
+          showPreviewReady(info.preview_url);
+        } else {
+          showPreviewSuccess(info.preview_url);
+        }
+      } else {
+        // Timeout - still show the link but warn user
+        showPreviewTimeout(info.preview_url);
       }
-      showLivePreview(info.preview_url);
+      
       return;
     }
 
-    // ── Static HTML preview (vanilla HTML/CSS/JS) ─────────
-    newTab?.close();
-
+    // Handle static preview fallback
     if (info.preview_type === 'live' && info.iframe_url) {
       showStaticPreview(info.iframe_url + '?t=' + Date.now());
       return;
@@ -391,84 +368,196 @@ async function refreshPreview() {
     showStaticPreview(API + '/preview/' + projectId + '?t=' + Date.now());
 
   } catch (err) {
-    loadingEl.style.display = 'none';
-    newTab?.close();
     console.error('Preview error:', err);
-
-    // Show error state
-    loadingEl.style.display = 'block';
-    loadingEl.innerHTML = `
-      <div style="font-size:1.5rem;margin-bottom:.5rem">❌</div>
-      <div style="color:var(--plasma);font-weight:700;margin-bottom:.4rem">
-        Preview failed
-      </div>
-      <div style="color:var(--muted);font-size:.75rem">${err.message}</div>
-    `;
-
+    showPreviewError(err.message || 'Network error while creating preview');
   } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Refresh Preview';
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 }
 
-// ── Show live sandbox preview box ─────────────────────────────
-function showLivePreview(url) {
-  document.getElementById('preview-placeholder').style.display = 'none';
-  document.getElementById('preview-container').style.display   = 'block';
-  document.getElementById('preview-iframe').style.display      = 'none';
-
-  const box  = document.getElementById('live-preview-box');
-  const link = document.getElementById('live-preview-link');
-
-  link.href         = url;
-  box.style.display = 'block';
-
-  // Update description
-  const desc = box.querySelector('.live-preview-box__desc');
-  if (desc) {
-    desc.innerHTML =
-      'Your app is running in a live sandbox. ' +
-      '<strong style="color:var(--neon)">Tab opened automatically.</strong><br>' +
-      '<span style="color:var(--muted);font-size:.75rem">' +
-      'If the tab shows an error, wait 30s and reload — ' +
-      'dependencies may still be installing.' +
-      '</span>';
-  }
-
-  // Update timer with a live countdown
-  const timerEl = box.querySelector('.live-preview-box__timer');
-  if (timerEl) {
-    let remaining = 10 * 60; // 10 minutes in seconds
-    timerEl.textContent = '⏱ Sandbox auto-shuts down in 10:00';
-    const interval = setInterval(() => {
-      remaining--;
-      if (remaining <= 0) {
-        clearInterval(interval);
-        timerEl.textContent = '⏱ Sandbox has shut down — click Refresh Preview to restart';
-        box.querySelector('a').style.opacity = '0.4';
-        box.querySelector('a').style.pointerEvents = 'none';
-        return;
+// ── Wait for sandbox to be ready with polling ─────────────────
+async function waitForSandboxReady(previewUrl, maxAttempts = 30, interval = 2000) {
+  // First, wait a few seconds for the server to start
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // Update progress message
+      updatePreviewProgress(`Checking sandbox (${attempt}/${maxAttempts})...`);
+      
+      // Try to fetch the preview URL
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(previewUrl, {
+        method: 'HEAD',
+        signal: controller.signal,
+        mode: 'no-cors'  // Avoid CORS issues, just check if server responds
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // If we get any response (even error), the server is responding
+      // For no-cors mode, we can't check status, so we assume success
+      console.log(`Sandbox check attempt ${attempt}: Server responded`);
+      return true;
+      
+    } catch (error) {
+      // Server not ready yet - continue polling
+      console.log(`Sandbox check attempt ${attempt}: Not ready yet - ${error.message}`);
+      
+      // Update status message with more detail for longer waits
+      if (attempt === 10) {
+        updatePreviewProgress('Still starting (npm install may take ~60 seconds)...');
+      } else if (attempt === 20) {
+        updatePreviewProgress('Almost ready, finishing setup...');
       }
-      const m = String(Math.floor(remaining / 60)).padStart(2, '0');
-      const s = String(remaining % 60).padStart(2, '0');
-      timerEl.textContent = `⏱ Sandbox auto-shuts down in ${m}:${s}`;
-    }, 1000);
+    }
+    
+    // Wait before next attempt
+    await new Promise(resolve => setTimeout(resolve, interval));
   }
-
-  document.getElementById('preview-btn').textContent = 'Refresh Preview';
+  
+  // Timeout - sandbox didn't become ready
+  console.warn('Sandbox did not become ready within timeout period');
+  return false;
 }
 
-// ── Show static HTML iframe preview ──────────────────────────
-function showStaticPreview(iframeUrl) {
-  document.getElementById('preview-placeholder').style.display = 'none';
-  document.getElementById('preview-container').style.display   = 'block';
-  document.getElementById('live-preview-box').style.display    = 'none';
+// ── UI Helper Functions ───────────────────────────────────────
+function showPreviewLoading(message, previewUrl = null) {
+  const placeholder = document.getElementById('preview-placeholder');
+  const container = document.getElementById('preview-container');
+  
+  if (placeholder) placeholder.style.display = 'none';
+  if (container) {
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="live-preview-card live-preview-card--loading">
+        <div class="live-preview-card__spinner"></div>
+        <div class="live-preview-card__status">${message}</div>
+        <div class="live-preview-card__progress">
+          <div class="live-preview-card__progress-bar" id="preview-progress-bar"></div>
+        </div>
+        ${previewUrl ? `<p class="live-preview-card__hint">URL: ${previewUrl}</p>` : ''}
+        <p class="live-preview-card__expiry">This may take up to 60 seconds for dependencies to install.</p>
+      </div>
+    `;
+  }
+}
 
-  const iframe       = document.getElementById('preview-iframe');
-  iframe.src         = iframeUrl;
-  iframe.style.display = 'block';
+function updatePreviewProgress(message) {
+  const statusEl = document.querySelector('.live-preview-card__status');
+  if (statusEl) statusEl.textContent = message;
+  
+  // Update progress bar
+  const progressBar = document.getElementById('preview-progress-bar');
+  if (progressBar) {
+    const matches = message.match(/(\d+)\/(\d+)/);
+    if (matches) {
+      const current = parseInt(matches[1]);
+      const total = parseInt(matches[2]);
+      const percent = (current / total) * 100;
+      progressBar.style.width = `${percent}%`;
+    }
+  }
+}
 
-  document.getElementById('preview-btn').textContent = 'Refresh Preview';
+function showPreviewReady(previewUrl) {
+  const container = document.getElementById('preview-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="live-preview-card live-preview-card--success">
+        <div class="live-preview-card__badge">✅ READY</div>
+        <div class="live-preview-card__status">Your app is ready!</div>
+        <a href="${previewUrl}" target="_blank" class="btn btn-primary btn-full">
+          Open Live App
+        </a>
+        <p class="live-preview-card__desc">
+          Your app is now running at:<br>
+          <a href="${previewUrl}" target="_blank">${previewUrl}</a>
+        </p>
+        <p class="live-preview-card__expiry">Sandbox auto-shuts down in 10 minutes</p>
+      </div>
+    `;
+  }
+}
+
+function showPreviewSuccess(previewUrl) {
+  const container = document.getElementById('preview-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="live-preview-card live-preview-card--success">
+        <div class="live-preview-card__badge">🚀 LIVE</div>
+        <div class="live-preview-card__status">App opened in new tab!</div>
+        <a href="${previewUrl}" target="_blank" class="btn btn-primary btn-full">
+          Open Again
+        </a>
+        <p class="live-preview-card__desc">
+          If the tab didn't open, <a href="${previewUrl}" target="_blank">click here</a>
+        </p>
+        <p class="live-preview-card__expiry">Sandbox expires in 10 minutes</p>
+      </div>
+    `;
+  }
+}
+
+function showPreviewTimeout(previewUrl) {
+  const container = document.getElementById('preview-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="live-preview-card live-preview-card--warning">
+        <div class="live-preview-card__badge">⚠️ SLOW START</div>
+        <div class="live-preview-card__status">App is taking longer than expected</div>
+        <a href="${previewUrl}" target="_blank" class="btn btn-primary btn-full">
+          Try Opening App
+        </a>
+        <p class="live-preview-card__desc">
+          The sandbox is running but dependencies are still installing.<br>
+          <strong>Click the button above</strong> and wait ~30 seconds, then refresh the page.
+        </p>
+        <p class="live-preview-card__expiry">Sandbox auto-shuts down in 10 minutes</p>
+      </div>
+    `;
+  }
+}
+
+function showPreviewError(message) {
+  const placeholder = document.getElementById('preview-placeholder');
+  const container = document.getElementById('preview-container');
+  
+  if (placeholder) placeholder.style.display = 'none';
+  if (container) {
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="live-preview-card live-preview-card--error">
+        <div class="live-preview-card__badge">❌ ERROR</div>
+        <div class="live-preview-card__status">Failed to start preview</div>
+        <p class="live-preview-card__desc">${message}</p>
+        <button onclick="refreshPreview()" class="btn btn-secondary">Try Again</button>
+      </div>
+    `;
+  }
+}
+
+function showStaticPreview(url) {
+  const placeholder = document.getElementById('preview-placeholder');
+  const container = document.getElementById('preview-container');
+  
+  if (placeholder) placeholder.style.display = 'none';
+  if (container) {
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="static-preview-card">
+        <h3>📄 Static Preview</h3>
+        <p>Live preview is currently unavailable.</p>
+        <iframe src="${url}" class="preview-iframe"></iframe>
+        <a href="/projects/${projectId}/download" class="btn btn-secondary">
+          Download Source
+        </a>
+      </div>
+    `;
+  }
 }
 
 // ── Platform selection ────────────────────────────────────────
