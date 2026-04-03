@@ -329,9 +329,9 @@ async function refreshPreview() {
     const info = await res.json();
 
     if (info.type === 'live' && info.preview_url) {
-      // Open blank tab immediately
-      if (newTab) newTab.location.href = info.preview_url;
-
+    // Open in new tab
+    previewTab = window.open(info.preview_url, '_blank');
+      
       // Show live box with "starting" note
       document.getElementById('preview-placeholder').style.display = 'none';
       document.getElementById('preview-container').style.display   = 'block';
