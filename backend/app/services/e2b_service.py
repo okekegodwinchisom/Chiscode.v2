@@ -311,7 +311,12 @@ export default defineConfig({
 
     file_tree[vite_key] = patched
     return file_tree    
-    
+
+    # In your e2b_service.py, before creating sandbox
+    logger.info("=== START COMMAND DEBUG ===")
+    logger.info("Full start command", cmd=start_cmd)
+    logger.info("Working directory", wd="/workspace")
+    logger.info("Port", port=port)
 # ── E2B Service ────────────────────────────────────────────────
 
 class E2BService:
@@ -395,18 +400,24 @@ class E2BService:
                     count=len(file_tree))
 
         # ── Start the app using a background session ──────────────────
-        # ── Install Node.js if needed ─────────────────────────────────
-        frontend = (stack.get("frontend") or "").lower()
-        backend  = (stack.get("backend")  or "").lower()
-        needs_node = any(x in frontend for x in ("svelte", "react", "vue", "next", "vite"))
-
         if needs_node:
-            logger.info("Installing Node.js", sandbox_id=sandbox_id)
-            sandbox.commands.run(
-                "bash -c 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - "
-                "&& apt-get install -y nodejs'",
-                timeout=120,
-            )
+            logger.info("Installing Node.js via nvm", sandbox_id=sandbox_id)
+        # Use nvm — no root required, installs in user space
+        sandbox.commands.run(
+            "bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash "
+            "&& export NVM_DIR=\"$HOME/.nvm\" "
+            "&& [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" "
+            "&& nvm install 20 && nvm use 20 && nvm alias default 20'",
+            timeout=120,
+            user="user",
+        )
+        # Make node/npm available in PATH for subsequent commands
+        sandbox.commands.run(
+            "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
+            "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
+            timeout=10,
+            user="user",
+        )
 
         # ── Install Python deps if needed ─────────────────────────────
         needs_python = any(x in backend for x in ("fastapi", "python", "django"))
