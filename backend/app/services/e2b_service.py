@@ -265,6 +265,8 @@ def _patch_vite_config(file_tree: dict) -> dict:
     return file_tree
 
 
+# ── E2B Service ────────────────────────────────────────────────
+
 class E2BService:
 
     def __init__(self):
@@ -284,14 +286,14 @@ class E2BService:
         # Patch Vite config so preview URLs work
         file_tree = _patch_vite_config(file_tree)
 
-        start_cmd, port = _detect_start_command(file_tree, stack)  # Make sure this is imported
+        start_cmd, port = _detect_start_command(file_tree, stack)
 
         logger.info("Creating E2B sandbox",
                     project_id=project_id, cmd=start_cmd, port=port)
 
-        loop = asyncio.get_running_loop()
+        loop   = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, self._create_sync, file_tree, start_cmd, port, stack,
+            None, self._create_sync, file_tree, start_cmd, port
         )
 
         logger.info("E2B sandbox ready",
@@ -310,22 +312,12 @@ class E2BService:
         file_tree: dict[str, str],
         start_cmd: str,
         port:      int,
-        stack:     dict,
     ) -> dict:
         """Synchronous sandbox creation — runs in thread pool."""
         from e2b import Sandbox
 
-        # Detect if Node.js is needed
-        needs_node = any([
-            "package.json" in file_tree,
-            "next.config.js" in file_tree,
-            "vite.config.js" in file_tree,
-            "src/App.jsx" in file_tree,
-            "src/App.tsx" in file_tree
-        ])
-
         # Create sandbox with timeout
-        sandbox = Sandbox(
+        sandbox    = Sandbox(
             api_key=self.api_key,
             timeout=SANDBOX_TIMEOUT_SECONDS + 60,
         )
@@ -354,74 +346,35 @@ class E2BService:
         logger.info("Files written to E2B sandbox",
                     count=len(file_tree))
 
-        # Install Node.js if needed
-        if needs_node:
-            logger.info("Installing Node.js via nvm", sandbox_id=sandbox_id)
-            sandbox.commands.run(
-                "bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash "
-                "&& export NVM_DIR=\"$HOME/.nvm\" "
-                "&& [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" "
-                "&& nvm install 20 && nvm use 20 && nvm alias default 20'",
-                timeout=120,
-                user="user",
-            )
-            # Make node/npm available in PATH for subsequent commands
-            sandbox.commands.run(
-                "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
-                "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
-                timeout=120,
-                user="user",
-            )
-
-        # ── Start the app ─────────────────────────────────────
-        nvm_prefix = (
-            "export NVM_DIR=\"$HOME/.nvm\" && "
-            "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && "
-        )
-        
-        # Strip any existing cd commands from start_cmd
-        clean_start_cmd = start_cmd
-        for prefix in ["cd /home/user && ", "cd /home/e2b && "]:
-            clean_start_cmd = clean_start_cmd.replace(prefix, "")
-        
-        # Build full command
-        full_cmd = f"cd /home/user && {nvm_prefix} {clean_start_cmd} > /tmp/app.log 2>&1 &"
-        
+        # ── Start the app in background ───────────────────────
         sandbox.commands.run(
-            f"bash -c '{full_cmd}'",
-            timeout=90,
-            user="user",
+            f"nohup sh -c '{start_cmd}' > /tmp/app.log 2>&1 &",
+            timeout=10,
         )
 
         # ── Get public preview URL ────────────────────────────
-        host = sandbox.get_host(port)
+        host        = sandbox.get_host(port)
         preview_url = f"https://{host}"
 
-        # ── Poll up to 90 seconds for app to respond ──────────
-        deadline = time.time() + 90
-        app_ready = False
+        # ── Poll until app responds (max 2 minutes) ───────────
+        deadline = time.time() + 120
         while time.time() < deadline:
-            time.sleep(4)
+            time.sleep(5)
             try:
-                req = urllib.request.urlopen(preview_url, timeout=5)
+                req = urllib.request.urlopen(preview_url, timeout=8)
                 if req.status < 500:
-                    app_ready = True
+                    logger.info("App responding", url=preview_url)
                     break
             except Exception:
-                continue
-
-        if not app_ready:
-            logger.warning("App did not respond in 90s — returning URL anyway",
-                           url=preview_url)
+                continue  # still starting up
 
         return {
-            "sandbox_id":   sandbox_id,
-            "workspace_id": sandbox_id,
-            "preview_url":  preview_url,
-            "port":         port,
+            "sandbox_id":  sandbox_id,
+            "workspace_id": sandbox_id,  # compat alias
+            "preview_url": preview_url,
+            "port":        port,
         }
 
-    
     async def _auto_kill(self, sandbox_id: str, delay_s: int) -> None:
         """Kill sandbox after delay."""
         await asyncio.sleep(delay_s)
