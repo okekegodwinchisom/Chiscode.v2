@@ -369,7 +369,7 @@ class E2BService:
             sandbox.commands.run(
                 "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
                 "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
-                timeout=10,
+                timeout=120,
                 user="user",
             )
 
@@ -389,7 +389,7 @@ class E2BService:
         
         sandbox.commands.run(
             f"bash -c '{full_cmd}'",
-            timeout=10,
+            timeout=90,
             user="user",
         )
 
