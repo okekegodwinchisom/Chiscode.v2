@@ -399,9 +399,25 @@ class E2BService:
         logger.info("Files written to E2B sandbox",
                     count=len(file_tree))
 
-        # ── Start the app using a background session ──────────────────
         if needs_node:
             logger.info("Installing Node.js via nvm", sandbox_id=sandbox_id)
+            # Use nvm — no root required, installs in user space
+            sandbox.commands.run(
+                "bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash "
+                "&& export NVM_DIR=\"$HOME/.nvm\" "
+                "&& [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" "
+                "&& nvm install 20 && nvm use 20 && nvm alias default 20'",
+                timeout=120,
+                user="user",
+            )
+        # Make node/npm available in PATH for subsequent commands
+        sandbox.commands.run(
+            "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
+            "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
+            timeout=10,
+            user="user",
+        )
+
         # Replace the start command run with:
         nvm_prefix = (
             "export NVM_DIR=\"$HOME/.nvm\" && "
@@ -415,23 +431,6 @@ class E2BService:
             f"> /tmp/app.log 2>&1 &'",
             timeout=10,
             user="user",
-        )
-
-        # ── Install Python deps if needed ─────────────────────────────
-        needs_python = any(x in backend for x in ("fastapi", "python", "django"))
-        if needs_python:
-            sandbox.commands.run(
-                "pip install uvicorn fastapi httpx",
-                timeout=60,
-            )
-
-        # ── Start the app ─────────────────────────────────────────────
-        sandbox.commands.run(
-            "bash",
-            "-c",
-            f"cd /home/user && {start_cmd.replace('cd /home/user && ', '')} > /tmp/app.log 2>&1",
-            background=True,
-            timeout=5,
         )
 
         # ── Get public preview URL ────────────────────────────────────
