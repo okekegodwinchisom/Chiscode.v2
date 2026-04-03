@@ -311,17 +311,21 @@ function showStaticPreview(iframeUrl) {
 }
 
 
-// ── Generate / refresh preview ────────────────────────────────
 async function refreshPreview() {
-  const btn    = document.getElementById('preview-btn');
-  btn.disabled = true;
+  const btn = document.getElementById('preview-btn');
+  btn.disabled    = true;
   btn.textContent = 'Generating…';
+
+  // Open a blank tab immediately (before any await)
+  // so browser doesn't treat it as a popup
+  const newTab = window.open('', '_blank');
 
   try {
     const res = await apiFetch('/projects/' + projectId + '/preview',
                                { method: 'POST' });
     if (!res?.ok) {
-      btn.disabled = false;
+      newTab?.close();
+      btn.disabled    = false;
       btn.textContent = 'Generate Preview';
       return;
     }
@@ -329,30 +333,24 @@ async function refreshPreview() {
     const info = await res.json();
 
     if (info.type === 'live' && info.preview_url) {
-      // Open blank tab immediately
+      // Navigate the already-open tab to the live URL
       if (newTab) newTab.location.href = info.preview_url;
-
-      // Show live box with "starting" note
-      document.getElementById('preview-placeholder').style.display = 'none';
-      document.getElementById('preview-container').style.display   = 'block';
-
-      const box  = document.getElementById('live-preview-box');
-      const link = document.getElementById('live-preview-link');
-      link.href         = info.preview_url;
-      box.style.display = 'block';
-
-      // Add starting note
-      document.querySelectordocument.querySelector('.live-preview-box__desc').innerHTML =
-        'Sandbox is live. App may take <strong>~60 seconds</strong> to finish ' +
-        'installing dependencies — reload the tab if you see an error.';
-
+      showLivePreview(info.preview_url);
       return;
     }
 
-    // Fallback — try serving static preview directly
+    // Not a live preview — close the blank tab
+    newTab?.close();
+
+    if (info.preview_type === 'live' && info.iframe_url) {
+      showStaticPreview(info.iframe_url + '?t=' + Date.now());
+      return;
+    }
+
     showStaticPreview(API + '/preview/' + projectId + '?t=' + Date.now());
 
   } catch (err) {
+    newTab?.close();
     console.error('Preview error:', err);
   } finally {
     btn.disabled    = false;
