@@ -251,73 +251,19 @@ def _detect_start_command(file_tree: dict, stack: dict) -> tuple[str, int]:
     logger.warning("No start command detected, using fallback")
     return "echo 'No start command detected' && sleep 30", 8080
 
+
 def _patch_vite_config(file_tree: dict) -> dict:
-    """
-    Patch vite.config.js/ts to allow E2B proxy hostnames.
-    Prevents 'host not allowed' 403 errors in Vite dev server.
-    """
-    vite_key = None
-    for key in ("vite.config.js", "vite.config.ts"):
-        if key in file_tree:
-            vite_key = key
-            break
+    """Patch Vite config to use 0.0.0.0 host."""
+    if "vite.config.js" in file_tree:
+        config = file_tree["vite.config.js"]
+        if "server:" not in config:
+            config = config.replace(
+                "export default defineConfig({",
+                "export default defineConfig({\n  server: { host: '0.0.0.0', port: 5173 },"
+            )
+        file_tree["vite.config.js"] = config
+    return file_tree
 
-    # Also handle SvelteKit — vite config is inside svelte.config.js
-    # but Vite server options go in a separate vite.config file
-    # For SvelteKit, patch svelte.config.js vite server block
-    if not vite_key and "svelte.config.js" in file_tree:
-        content = file_tree["svelte.config.js"]
-        if "allowedHosts" not in content:
-            file_tree = dict(file_tree)
-            file_tree["vite.config.js"] = """import { defineConfig } from 'vite';
-import { sveltekit } from '@sveltejs/kit/vite';
-
-export default defineConfig({
-  plugins: [sveltekit()],
-  server: {
-    host: '0.0.0.0',
-    allowedHosts: ['.e2b.app', '.e2b.dev', 'all'],
-  },
-});
-"""
-        return file_tree
-
-    if not vite_key:
-        return file_tree
-
-    content = file_tree[vite_key]
-    if "allowedHosts" in content:
-        return file_tree  # already patched
-
-    file_tree = dict(file_tree)
-
-    # Try to inject into existing server block
-    if "server:" in content or "server: {" in content:
-        patched = content.replace(
-            "server: {",
-            "server: {\n      allowedHosts: ['.e2b.app', '.e2b.dev', 'all'],",
-            1,
-        )
-    elif "defineConfig({" in content:
-        # Inject a server block
-        patched = content.replace(
-            "defineConfig({",
-            "defineConfig({\n  server: { host: '0.0.0.0', "
-            "allowedHosts: ['.e2b.app', '.e2b.dev', 'all'] },",
-            1,
-        )
-    else:
-        patched = content  # can't patch safely, leave as-is
-
-    file_tree[vite_key] = patched
-    return file_tree    
-
-    # In your e2b_service.py, before creating sandbox
-    logger.info("=== START COMMAND DEBUG ===")
-    logger.info("Full start command", cmd=start_cmd)
-    logger.info("Working directory", wd="/workspace")
-    logger.info("Port", port=port)
-# ── E2B Service ────────────────────────────────────────────────
 
 class E2BService:
 
@@ -338,12 +284,12 @@ class E2BService:
         # Patch Vite config so preview URLs work
         file_tree = _patch_vite_config(file_tree)
 
-        start_cmd, port = _detect_start_command(file_tree, stack)
+        start_cmd, port = _detect_start_command(file_tree, stack)  # Make sure this is imported
 
         logger.info("Creating E2B sandbox",
                     project_id=project_id, cmd=start_cmd, port=port)
 
-        loop   = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None, self._create_sync, file_tree, start_cmd, port, stack,
         )
@@ -369,8 +315,17 @@ class E2BService:
         """Synchronous sandbox creation — runs in thread pool."""
         from e2b import Sandbox
 
+        # Detect if Node.js is needed
+        needs_node = any([
+            "package.json" in file_tree,
+            "next.config.js" in file_tree,
+            "vite.config.js" in file_tree,
+            "src/App.jsx" in file_tree,
+            "src/App.tsx" in file_tree
+        ])
+
         # Create sandbox with timeout
-        sandbox    = Sandbox(
+        sandbox = Sandbox(
             api_key=self.api_key,
             timeout=SANDBOX_TIMEOUT_SECONDS + 60,
         )
@@ -399,9 +354,9 @@ class E2BService:
         logger.info("Files written to E2B sandbox",
                     count=len(file_tree))
 
+        # Install Node.js if needed
         if needs_node:
             logger.info("Installing Node.js via nvm", sandbox_id=sandbox_id)
-            # Use nvm — no root required, installs in user space
             sandbox.commands.run(
                 "bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash "
                 "&& export NVM_DIR=\"$HOME/.nvm\" "
@@ -418,27 +373,31 @@ class E2BService:
                 user="user",
             )
 
-        # Replace the start command run with:
+        # ── Start the app ─────────────────────────────────────
         nvm_prefix = (
             "export NVM_DIR=\"$HOME/.nvm\" && "
             "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && "
         )
-        full_cmd = nvm_prefix + start_cmd.replace("cd /home/user && ", "cd /home/user && " + nvm_prefix)
-
+        
+        # Strip any existing cd commands from start_cmd
+        clean_start_cmd = start_cmd
+        for prefix in ["cd /home/user && ", "cd /home/e2b && "]:
+            clean_start_cmd = clean_start_cmd.replace(prefix, "")
+        
+        # Build full command
+        full_cmd = f"cd /home/user && {nvm_prefix} {clean_start_cmd} > /tmp/app.log 2>&1 &"
+        
         sandbox.commands.run(
-            f"bash -c 'cd /home/user && {nvm_prefix}"
-            f"{start_cmd.replace(\"cd /home/user && \", \"\")} "
-            f"> /tmp/app.log 2>&1 &'",
+            f"bash -c '{full_cmd}'",
             timeout=10,
             user="user",
         )
 
-        # ── Get public preview URL ────────────────────────────────────
-        host        = sandbox.get_host(port)
+        # ── Get public preview URL ────────────────────────────
+        host = sandbox.get_host(port)
         preview_url = f"https://{host}"
 
-        # ── Poll up to 90 seconds for app to respond ─────────────────
-        import urllib.request
+        # ── Poll up to 90 seconds for app to respond ──────────
         deadline = time.time() + 90
         app_ready = False
         while time.time() < deadline:
@@ -454,14 +413,15 @@ class E2BService:
         if not app_ready:
             logger.warning("App did not respond in 90s — returning URL anyway",
                            url=preview_url)
-            
+
         return {
-            "sandbox_id":  sandbox_id,
+            "sandbox_id":   sandbox_id,
             "workspace_id": sandbox_id,
-            "preview_url": preview_url,
-            "port":        port,
+            "preview_url":  preview_url,
+            "port":         port,
         }
 
+    
     async def _auto_kill(self, sandbox_id: str, delay_s: int) -> None:
         """Kill sandbox after delay."""
         await asyncio.sleep(delay_s)
