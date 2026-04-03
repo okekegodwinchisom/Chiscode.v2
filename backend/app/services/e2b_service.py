@@ -410,13 +410,13 @@ class E2BService:
                 timeout=120,
                 user="user",
             )
-        # Make node/npm available in PATH for subsequent commands
-        sandbox.commands.run(
-            "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
-            "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
-            timeout=10,
-            user="user",
-        )
+            # Make node/npm available in PATH for subsequent commands
+            sandbox.commands.run(
+                "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
+                "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
+                timeout=10,
+                user="user",
+            )
 
         # Replace the start command run with:
         nvm_prefix = (
@@ -428,7 +428,7 @@ class E2BService:
         sandbox.commands.run(
             f"bash -c 'cd /home/user && {nvm_prefix}"
             f"{start_cmd.replace(\"cd /home/user && \", \"\")} "
-            f"> /tmp/app.log 2>&1 &'"
+            f"> /tmp/app.log 2>&1 &'",
             timeout=10,
             user="user",
         )
