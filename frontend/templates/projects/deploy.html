@@ -316,30 +316,71 @@ async function refreshPreview() {
   btn.disabled    = true;
   btn.textContent = 'Generating…';
 
-  // Open a blank tab immediately (before any await)
-  // so browser doesn't treat it as a popup
+  // Show loading state in preview area immediately
+  document.getElementById('preview-placeholder').style.display = 'none';
+  document.getElementById('preview-container').style.display   = 'block';
+  document.getElementById('live-preview-box').style.display    = 'none';
+  document.getElementById('preview-iframe').style.display      = 'none';
+
+  // Show spinner while waiting
+  let loadingEl = document.getElementById('preview-loading-msg');
+  if (!loadingEl) {
+    loadingEl = document.createElement('div');
+    loadingEl.id = 'preview-loading-msg';
+    loadingEl.style.cssText = [
+      'padding:2rem',
+      'text-align:center',
+      'border:1px dashed var(--border)',
+      'border-radius:12px',
+      'color:var(--ghost)',
+      'font-family:var(--font-code)',
+      'font-size:.82rem',
+    ].join(';');
+    document.getElementById('preview-container').prepend(loadingEl);
+  }
+  loadingEl.style.display = 'block';
+  loadingEl.innerHTML = `
+    <div style="font-size:1.5rem;margin-bottom:.75rem;
+                animation:spin 1.2s linear infinite;display:inline-block">⟳</div>
+    <div style="color:var(--electric);font-weight:700;margin-bottom:.4rem">
+      Spinning up sandbox…
+    </div>
+    <div style="color:var(--muted);font-size:.75rem">
+      Installing dependencies &amp; starting dev server
+    </div>
+  `;
+
+  // Open blank tab immediately — before any await
+  // so popup blocker doesn't kill it
   const newTab = window.open('', '_blank');
 
   try {
     const res = await apiFetch('/projects/' + projectId + '/preview',
                                { method: 'POST' });
+
+    // Hide spinner
+    loadingEl.style.display = 'none';
+
     if (!res?.ok) {
       newTab?.close();
-      btn.disabled    = false;
-      btn.textContent = 'Generate Preview';
+      document.getElementById('preview-placeholder').style.display = 'block';
+      document.getElementById('preview-container').style.display   = 'none';
       return;
     }
 
     const info = await res.json();
 
+    // ── Live Daytona/E2B sandbox ──────────────────────────
     if (info.type === 'live' && info.preview_url) {
       // Navigate the already-open tab to the live URL
-      if (newTab) newTab.location.href = info.preview_url;
+      if (newTab) {
+        newTab.location.href = info.preview_url;
+      }
       showLivePreview(info.preview_url);
       return;
     }
 
-    // Not a live preview — close the blank tab
+    // ── Static HTML preview (vanilla HTML/CSS/JS) ─────────
     newTab?.close();
 
     if (info.preview_type === 'live' && info.iframe_url) {
@@ -350,12 +391,84 @@ async function refreshPreview() {
     showStaticPreview(API + '/preview/' + projectId + '?t=' + Date.now());
 
   } catch (err) {
+    loadingEl.style.display = 'none';
     newTab?.close();
     console.error('Preview error:', err);
+
+    // Show error state
+    loadingEl.style.display = 'block';
+    loadingEl.innerHTML = `
+      <div style="font-size:1.5rem;margin-bottom:.5rem">❌</div>
+      <div style="color:var(--plasma);font-weight:700;margin-bottom:.4rem">
+        Preview failed
+      </div>
+      <div style="color:var(--muted);font-size:.75rem">${err.message}</div>
+    `;
+
   } finally {
     btn.disabled    = false;
     btn.textContent = 'Refresh Preview';
   }
+}
+
+// ── Show live sandbox preview box ─────────────────────────────
+function showLivePreview(url) {
+  document.getElementById('preview-placeholder').style.display = 'none';
+  document.getElementById('preview-container').style.display   = 'block';
+  document.getElementById('preview-iframe').style.display      = 'none';
+
+  const box  = document.getElementById('live-preview-box');
+  const link = document.getElementById('live-preview-link');
+
+  link.href         = url;
+  box.style.display = 'block';
+
+  // Update description
+  const desc = box.querySelector('.live-preview-box__desc');
+  if (desc) {
+    desc.innerHTML =
+      'Your app is running in a live sandbox. ' +
+      '<strong style="color:var(--neon)">Tab opened automatically.</strong><br>' +
+      '<span style="color:var(--muted);font-size:.75rem">' +
+      'If the tab shows an error, wait 30s and reload — ' +
+      'dependencies may still be installing.' +
+      '</span>';
+  }
+
+  // Update timer with a live countdown
+  const timerEl = box.querySelector('.live-preview-box__timer');
+  if (timerEl) {
+    let remaining = 10 * 60; // 10 minutes in seconds
+    timerEl.textContent = '⏱ Sandbox auto-shuts down in 10:00';
+    const interval = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        timerEl.textContent = '⏱ Sandbox has shut down — click Refresh Preview to restart';
+        box.querySelector('a').style.opacity = '0.4';
+        box.querySelector('a').style.pointerEvents = 'none';
+        return;
+      }
+      const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+      const s = String(remaining % 60).padStart(2, '0');
+      timerEl.textContent = `⏱ Sandbox auto-shuts down in ${m}:${s}`;
+    }, 1000);
+  }
+
+  document.getElementById('preview-btn').textContent = 'Refresh Preview';
+}
+
+// ── Show static HTML iframe preview ──────────────────────────
+function showStaticPreview(iframeUrl) {
+  document.getElementById('preview-placeholder').style.display = 'none';
+  document.getElementById('preview-container').style.display   = 'block';
+  document.getElementById('live-preview-box').style.display    = 'none';
+
+  const iframe       = document.getElementById('preview-iframe');
+  iframe.src         = iframeUrl;
+  iframe.style.display = 'block';
+
+  document.getElementById('preview-btn').textContent = 'Refresh Preview';
 }
 
 // ── Platform selection ────────────────────────────────────────
