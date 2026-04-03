@@ -402,19 +402,17 @@ class E2BService:
         # ── Start the app using a background session ──────────────────
         if needs_node:
             logger.info("Installing Node.js via nvm", sandbox_id=sandbox_id)
-        # Use nvm — no root required, installs in user space
-        sandbox.commands.run(
-            "bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash "
-            "&& export NVM_DIR=\"$HOME/.nvm\" "
-            "&& [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" "
-            "&& nvm install 20 && nvm use 20 && nvm alias default 20'",
-            timeout=120,
-            user="user",
+        # Replace the start command run with:
+        nvm_prefix = (
+            "export NVM_DIR=\"$HOME/.nvm\" && "
+            "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && "
         )
-        # Make node/npm available in PATH for subsequent commands
+        full_cmd = nvm_prefix + start_cmd.replace("cd /home/user && ", "cd /home/user && " + nvm_prefix)
+
         sandbox.commands.run(
-            "bash -c 'echo \"export NVM_DIR=\\\"\\$HOME/.nvm\\\"\" >> ~/.bashrc "
-            "&& echo \"[ -s \\\"\\$NVM_DIR/nvm.sh\\\" ] && . \\\"\\$NVM_DIR/nvm.sh\\\"\" >> ~/.bashrc'",
+            f"bash -c 'cd /home/user && {nvm_prefix}"
+            f"{start_cmd.replace(\"cd /home/user && \", \"\")} "
+            f"> /tmp/app.log 2>&1 &'",
             timeout=10,
             user="user",
         )
