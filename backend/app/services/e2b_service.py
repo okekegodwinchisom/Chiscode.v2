@@ -346,34 +346,27 @@ class E2BService:
                     count=len(file_tree))
 
         # ── Start the app in background ───────────────────────────────
+        # Use double quotes inside to avoid single-quote conflicts
         safe_cmd = start_cmd.replace("'", '"')
-
-        # Use background=True — launches process and returns immediately
-        # timeout=0 disables the wait timeout entirely
         sandbox.commands.run(
             f'bash -c "cd /home/user && {safe_cmd} > /tmp/app.log 2>&1 &"',
-            background=True,   # ← key fix — don't wait for completion
+            timeout=10,
             user="user",
         )
 
-        logger.info("Start command launched", sandbox_id=sandbox_id)
-
-        # Wait a few seconds then check the log
+        # Log app.log after 3s to confirm process started
         import time
-        time.sleep(5)
+        time.sleep(3)
         try:
-            log_result = sandbox.commands.run(
-                "cat /tmp/app.log 2>/dev/null | tail -20",
+            log_check = sandbox.commands.run(
+                "cat /tmp/app.log 2>/dev/null | head -20",
                 timeout=5,
-                user="user",
             )
-            if log_result.stdout:
-                logger.info("App startup log",
-                            sandbox_id=sandbox_id,
-                            log=log_result.stdout[:400])
+            logger.info("App startup log",
+                        sandbox_id=sandbox_id,
+                        log=log_check.stdout[:300] if log_check.stdout else "empty")
         except Exception:
             pass
-
         # ── Get public preview URL ────────────────────────────────────
         # After launching the background command:
         import time
