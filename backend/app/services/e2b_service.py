@@ -375,14 +375,48 @@ class E2BService:
             pass
 
         # ── Get public preview URL ────────────────────────────────────
+        # After launching the background command:
+        import time
+        import urllib.request
+
+        logger.info("Start command launched", sandbox_id=sandbox_id)
+
+        # Get preview URL
         host        = sandbox.get_host(port)
         preview_url = f"https://{host}"
 
-        # Don't poll here — return immediately
-        # The app will be ready in ~60s, user opens it from the button
+        # Poll until app responds — max 3 minutes
+        logger.info("Waiting for app to start", url=preview_url)
+        deadline  = time.time() + 180
+        app_ready = False
+
+        while time.time() < deadline:
+            time.sleep(8)
+            try:
+                req = urllib.request.urlopen(preview_url, timeout=6)
+                if req.status < 500:
+                    app_ready = True
+                    logger.info("App ready", sandbox_id=sandbox_id, url=preview_url)
+                    break
+            except Exception as e:
+                # Log progress every 30 seconds
+                elapsed = int(time.time() - (deadline - 180))
+                if elapsed % 30 < 8:
+                    try:
+                        log_result = sandbox.commands.run(
+                            "tail -5 /tmp/app.log 2>/dev/null",
+                            timeout=5, user="user",
+                        )
+                        logger.info("App log", elapsed=elapsed,
+                                    log=log_result.stdout[:200] if log_result.stdout else "empty")
+                    except Exception:
+                        pass
+
+        if not app_ready:
+            logger.warning("App did not respond in 3 minutes", url=preview_url)
+
         logger.info("E2B sandbox ready — app starting",
                     sandbox_id=sandbox_id, url=preview_url)
-
         return {
             "sandbox_id":  sandbox_id,
             "workspace_id": sandbox_id,
