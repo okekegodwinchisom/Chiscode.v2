@@ -264,7 +264,6 @@ def _patch_vite_config(file_tree: dict) -> dict:
         file_tree["vite.config.js"] = config
     return file_tree
 
-
 # ── E2B Service ────────────────────────────────────────────────
 
 class E2BService:
