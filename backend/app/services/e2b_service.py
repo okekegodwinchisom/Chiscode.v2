@@ -346,10 +346,27 @@ class E2BService:
                     count=len(file_tree))
 
         # ── Start the app in background ───────────────────────────────
+        # Use double quotes inside to avoid single-quote conflicts
+        safe_cmd = start_cmd.replace("'", '"')
         sandbox.commands.run(
-            f"nohup sh -c '{start_cmd}' > /tmp/app.log 2>&1 &",
+            f'bash -c "cd /home/user && {safe_cmd} > /tmp/app.log 2>&1 &"',
             timeout=10,
+            user="user",
         )
+
+        # Log app.log after 3s to confirm process started
+        import time
+        time.sleep(3)
+        try:
+            log_check = sandbox.commands.run(
+                "cat /tmp/app.log 2>/dev/null | head -20",
+                timeout=5,
+            )
+            logger.info("App startup log",
+                        sandbox_id=sandbox_id,
+                        log=log_check.stdout[:300] if log_check.stdout else "empty")
+        except Exception:
+            pass
 
         # ── Get public preview URL ────────────────────────────────────
         host        = sandbox.get_host(port)
