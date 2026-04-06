@@ -363,18 +363,25 @@ class E2BService:
         logger.info("Node.js installed", sandbox_id=sandbox_id)
 
         # ── Start the app ─────────────────────────────────────────────
-        safe_cmd = start_cmd.replace("'", '"')
+        # ── Write startup script ──────────────────────────────────────
+        safe_cmd = start_cmd.replace("'", '"').replace("/home/user && ", "")
+        startup_script = f"""#!/bin/bash
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+        cd /home/user
+        {safe_cmd}
+        """
+        sandbox.files.write("/home/user/start.sh", startup_script)
+        sandbox.commands.run("chmod +x /home/user/start.sh", timeout=5, user="user")
+
+        # ── Launch startup script in background ──────────────────────
         sandbox.commands.run(
-            "bash -c '"
-            "export NVM_DIR=\"$HOME/.nvm\" && "
-            ". \"$NVM_DIR/nvm.sh\" && "
-            f"cd /home/user && {safe_cmd} > /tmp/app.log 2>&1"
-            "'",
+            "bash -c 'bash /home/user/start.sh > /tmp/app.log 2>&1 &'",
             background=True,
             user="user",
         )
         logger.info("Start command launched", sandbox_id=sandbox_id)
-        
+
         # ── Get public preview URL ────────────────────────────
         host = sandbox.get_host(port)
         preview_url = f"https://{host}"
