@@ -345,29 +345,36 @@ class E2BService:
         logger.info("Files written to E2B sandbox",
                     count=len(file_tree))
 
-        # ── Start the app in background ───────────────────────────────
-        # Use double quotes inside to avoid single-quote conflicts
-        safe_cmd = start_cmd.replace("'", '"')
+        # ── Install Node.js via nvm (no root needed) ──────────────────
+        logger.info("Installing Node.js", sandbox_id=sandbox_id)
+
         sandbox.commands.run(
-            f'bash -c "cd /home/user && {safe_cmd} > /tmp/app.log 2>&1 &"',
-            timeout=10,
+            "bash -c '"
+            "curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && "
+            "export NVM_DIR=\"$HOME/.nvm\" && "
+            ". \"$NVM_DIR/nvm.sh\" && "
+            "nvm install 20 --lts && "
+            "nvm use 20 && "
+            "node --version && npm --version"
+            "'",
+            timeout=120,
             user="user",
         )
+        logger.info("Node.js installed", sandbox_id=sandbox_id)
 
-        # Log app.log after 3s to confirm process started
-        import time
-        time.sleep(3)
-        try:
-            log_check = sandbox.commands.run(
-                "cat /tmp/app.log 2>/dev/null | head -20",
-                timeout=5,
-            )
-            logger.info("App startup log",
-                        sandbox_id=sandbox_id,
-                        log=log_check.stdout[:300] if log_check.stdout else "empty")
-        except Exception:
-            pass
-        # ── Get public preview URL ────────────────────────────────────
+        # ── Start the app ─────────────────────────────────────────────
+        safe_cmd = start_cmd.replace("'", '"')
+        sandbox.commands.run(
+            "bash -c '"
+            "export NVM_DIR=\"$HOME/.nvm\" && "
+            ". \"$NVM_DIR/nvm.sh\" && "
+            f"cd /home/user && {safe_cmd} > /tmp/app.log 2>&1"
+            "'",
+            background=True,
+            user="user",
+        )
+        logger.info("Start command launched", sandbox_id=sandbox_id)
+        
         # ── Get public preview URL ────────────────────────────
         host = sandbox.get_host(port)
         preview_url = f"https://{host}"
