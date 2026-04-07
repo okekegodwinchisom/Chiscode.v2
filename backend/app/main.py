@@ -297,5 +297,31 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
+    @app.post("/admin/build-e2b-templates")
+    async def build_e2b_templates(x_admin_key: str = Header(...)):
+        """One-time endpoint to build E2B templates. Admin only."""
+        if x_admin_key != settings.admin_secret_key:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        import asyncio
+        import subprocess
+        import tempfile
+        import os
+
+        async def _build():
+            from scripts.build_e2b_templates import TEMPLATES, build_template
+            results = {}
+            for name, config in TEMPLATES.items():
+                tid = await asyncio.get_running_loop().run_in_executor(
+                    None, build_template, name, config["dockerfile"]
+                )
+                results[name] = tid or "failed"
+            return results
+
+        results = await _build()
+        return {
+            "message": "Templates built. Add these IDs to HF Spaces secrets.",
+            "results": results,
+        }
 
 app = create_app()
