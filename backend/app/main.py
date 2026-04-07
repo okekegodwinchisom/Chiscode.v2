@@ -282,21 +282,7 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=500, content={"detail": "Internal server error."}
         )
-
-    return app
-
-    from fastapi.exceptions import RequestValidationError
-    from fastapi.responses import JSONResponse
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request, exc):
-        logger.error(
-            "Validation error",
-            path=str(request.url.path),
-            errors=str(exc.errors()),
-        )
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
-
+        
     @app.post("/admin/build-e2b-templates")
     async def build_e2b_templates(x_admin_key: str = Header(...)):
         """One-time endpoint to build E2B templates. Admin only."""
@@ -323,5 +309,22 @@ def create_app() -> FastAPI:
             "message": "Templates built. Add these IDs to HF Spaces secrets.",
             "results": results,
         }
+
+    
+    return app
+
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request, exc):
+        logger.error(
+            "Validation error",
+            path=str(request.url.path),
+            errors=str(exc.errors()),
+        )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    
 
 app = create_app()
