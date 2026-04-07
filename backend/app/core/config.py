@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 1440   # 24h
     jwt_refresh_token_expire_days: int = 30
 
+    admin_secret_key: str = Field(default="", env="ADMIN_SECRET_KEY")
+
     # ── Payments ─────────────────────────────────────────────
     polar_access_token: str = Field(default="")          # Polar API key
     polar_webhook_secret: str = Field(default="")        # Webhook secret from Polar dashboard
