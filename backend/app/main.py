@@ -365,6 +365,18 @@ def create_app() -> FastAPI:
             "raw": results,
         }
 
+    @app.get("/admin/debug-e2b-cli")
+    async def debug_e2b_cli(x_admin_key: str = Header(...)):
+        if x_admin_key != settings.admin_secret_key:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        import subprocess, shutil, sys, os
+        return {
+            "which_e2b":    shutil.which("e2b"),
+            "python_path":  sys.executable,
+            "venv_bin":     os.listdir("/app/.venv/bin") if os.path.exists("/app/.venv/bin") else "no venv",
+            "pip_show":     subprocess.run(["pip", "show", "e2b"], capture_output=True, text=True).stdout,
+            "path_env":     os.environ.get("PATH", ""),
+        }
     
     return app
 
