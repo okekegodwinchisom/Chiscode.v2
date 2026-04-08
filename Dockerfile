@@ -84,6 +84,11 @@ ENV PYTHONUNBUFFERED=1 \
 # fails the build immediately if the venv is broken, not at runtime
 RUN /app/.venv/bin/uvicorn --version
 
+# Install Node.js and E2B CLI
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g @e2b/cli
+
 USER 1000
 
 EXPOSE 7860
