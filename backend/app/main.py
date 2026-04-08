@@ -303,21 +303,66 @@ def create_app() -> FastAPI:
         import subprocess
         import tempfile
         import os
+        import re
 
-        async def _build():
-            from scripts.build_e2b_templates import TEMPLATES, build_template
-            results = {}
-            for name, config in TEMPLATES.items():
-                tid = await asyncio.get_running_loop().run_in_executor(
-                    None, build_template, name, config["dockerfile"]
-                )
-                results[name] = tid or "failed"
-            return results
+        TEMPLATES = {
+            "chiscode-nextjs":    "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-sveltekit": "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-react":     "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest vite\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-vue":       "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-fastapi":   "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-django":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir django djangorestframework python-dotenv\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-express":   "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest nodemon\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-static":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+        }
 
-        results = await _build()
+        def _build_one(name: str, dockerfile: str) -> str:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with open(os.path.join(tmpdir, "e2b.Dockerfile"), "w") as f:
+                    f.write(dockerfile)
+                try:
+                    result = subprocess.run(
+                        ["e2b", "template", "build", "--name", name, "--path", tmpdir],
+                        capture_output=True, text=True, timeout=600,
+                        env={**os.environ, "E2B_API_KEY": settings.e2b_api_key},
+                    )
+                    output = result.stdout + result.stderr
+                    # Extract template ID from output
+                    match = re.search(r'sandbox template\s+(\S+)\s+' + re.escape(name), output)
+                    if match:
+                        return match.group(1)
+                    # Fallback: find any alphanumeric ID-like token
+                    for line in output.split("\n"):
+                        if "finished" in line.lower():
+                            tokens = line.split()
+                            for t in tokens:
+                                if len(t) > 8 and re.match(r'^[a-z0-9]+$', t):
+                                    return t
+                    return f"build-failed: {result.stderr[:100]}"
+                except subprocess.TimeoutExpired:
+                    return "timeout"
+                except FileNotFoundError:
+                    return "e2b-cli-not-found"
+
+        loop    = asyncio.get_running_loop()
+        results = {}
+
+        for name, dockerfile in TEMPLATES.items():
+            env_key  = f"E2B_TEMPLATE_{name.replace('chiscode-', '').upper().replace('-', '_')}"
+            existing = os.environ.get(env_key, "")
+            if existing:
+                results[name] = f"already-built:{existing}"
+                continue
+            tid = await loop.run_in_executor(None, _build_one, name, dockerfile)
+            results[name] = tid
+
         return {
-            "message": "Templates built. Add these IDs to HF Spaces secrets.",
-            "results": results,
+            "message": "Done. Add these to HF Spaces secrets then restart.",
+            "secrets": {
+                f"E2B_TEMPLATE_{n.replace('chiscode-','').upper().replace('-','_')}": v
+                for n, v in results.items()
+            },
+            "raw": results,
         }
 
     
