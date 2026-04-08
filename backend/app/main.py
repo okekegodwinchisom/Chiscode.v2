@@ -295,7 +295,6 @@ def create_app() -> FastAPI:
 
     @app.post("/admin/build-e2b-templates")
     async def build_e2b_templates(x_admin_key: str = Header(...)):
-        """One-time endpoint to build E2B templates. Admin only."""
         if x_admin_key != settings.admin_secret_key:
             raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -305,65 +304,95 @@ def create_app() -> FastAPI:
         import os
         import re
 
+        # First install e2b CLI
+        subprocess.run(
+            ["/app/.venv/bin/pip", "install", "e2b", "--quiet"],
+            check=True,
+        )
+
         TEMPLATES = {
             "chiscode-nextjs":    "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-sveltekit": "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
-            "chiscode-react":     "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest vite\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-react":     "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-vue":       "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-fastapi":   "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-django":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir django djangorestframework python-dotenv\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-express":   "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest nodemon\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
-            "chiscode-static":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            b"chiscode-static":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
         }
 
         def _build_one(name: str, dockerfile: str) -> str:
             with tempfile.TemporaryDirectory() as tmpdir:
                 with open(os.path.join(tmpdir, "e2b.Dockerfile"), "w") as f:
                     f.write(dockerfile)
+
+                # e2b CLI is now at /app/.venv/bin/e2b after install
+                cli = "/app/.venv/bin/e2b"
+                if not os.path.exists(cli):
+                    return f"cli-missing-at-{cli}"
+
                 try:
                     result = subprocess.run(
-                        ["e2b", "template", "build", "--name", name, "--path", tmpdir],
+                        [cli, "template", "build",
+                        "--name", name,
+                        "--path", tmpdir],
                         capture_output=True, text=True, timeout=600,
-                        env={**os.environ, "E2B_API_KEY": settings.e2b_api_key},
+                        env={
+                            **os.environ,
+                            "E2B_API_KEY": settings.e2b_api_key,
+                            "PATH": f"/app/.venv/bin:{os.environ.get('PATH', '')}",
+                        },
                     )
                     output = result.stdout + result.stderr
-                    # Extract template ID from output
-                    match = re.search(r'sandbox template\s+(\S+)\s+' + re.escape(name), output)
+                    print(f"[{name}] output: {output[:500]}")
+
+                    # Parse template ID — E2B prints it in the success line
+                    # Pattern: "Building sandbox template <ID> <name> finished"
+                    match = re.search(
+                        r'Building sandbox template\s+(\S+)\s+' + re.escape(name),
+                        output
+                    )
                     if match:
                         return match.group(1)
-                    # Fallback: find any alphanumeric ID-like token
+
+                    # Fallback: any line with "finished" containing an ID
                     for line in output.split("\n"):
-                        if "finished" in line.lower():
+                        if "finished" in line.lower() or "✅" in line:
                             tokens = line.split()
                             for t in tokens:
-                                if len(t) > 8 and re.match(r'^[a-z0-9]+$', t):
+                                if re.match(r'^[a-z0-9]{8,}$', t):
                                     return t
-                    return f"build-failed: {result.stderr[:100]}"
-                except subprocess.TimeoutExpired:
-                    return "timeout"
-                except FileNotFoundError:
-                    return "e2b-cli-not-found"
 
-        loop    = asyncio.get_running_loop()
-        results = {}
+                if result.returncode != 0:
+                    return f"error:{result.stderr[:200]}"
 
-        for name, dockerfile in TEMPLATES.items():
-            env_key  = f"E2B_TEMPLATE_{name.replace('chiscode-', '').upper().replace('-', '_')}"
-            existing = os.environ.get(env_key, "")
-            if existing:
-                results[name] = f"already-built:{existing}"
-                continue
-            tid = await loop.run_in_executor(None, _build_one, name, dockerfile)
-            results[name] = tid
+                return f"built-but-id-not-parsed:{output[:100]}"
 
-        return {
-            "message": "Done. Add these to HF Spaces secrets then restart.",
-            "secrets": {
-                f"E2B_TEMPLATE_{n.replace('chiscode-','').upper().replace('-','_')}": v
-                for n, v in results.items()
-            },
-            "raw": results,
-        }
+            except subprocess.TimeoutExpired:
+                return "timeout"
+
+    loop    = asyncio.get_running_loop()
+    results = {}
+
+    for name, dockerfile in TEMPLATES.items():
+        env_key  = f"E2B_TEMPLATE_{name.replace('chiscode-', '').upper().replace('-', '_')}"
+        existing = os.environ.get(env_key, "")
+        if existing:
+            results[name] = f"already-built:{existing}"
+            continue
+        print(f"Building {name}...")
+        tid = await loop.run_in_executor(None, _build_one, name, dockerfile)
+        results[name] = tid
+        print(f"{name} → {tid}")
+
+    return {
+        "message": "Done. Add these to HF Spaces secrets then restart.",
+        "secrets": {
+            f"E2B_TEMPLATE_{n.replace('chiscode-','').upper().replace('-','_')}": v
+            for n, v in results.items()
+        },
+        "raw": results,
+    }
 
     @app.get("/admin/debug-e2b-cli")
     async def debug_e2b_cli(x_admin_key: str = Header(...)):
