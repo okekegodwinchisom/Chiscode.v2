@@ -304,11 +304,6 @@ def create_app() -> FastAPI:
         import os
         import re
 
-        # First install e2b CLI
-        subprocess.run(
-            ["/app/.venv/bin/pip", "install", "e2b", "--quiet"],
-            check=True,
-        )
 
         TEMPLATES = {
             "chiscode-nextjs":    "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
