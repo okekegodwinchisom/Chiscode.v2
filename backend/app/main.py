@@ -318,7 +318,7 @@ def create_app() -> FastAPI:
             "chiscode-fastapi":   "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-django":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN pip install --no-cache-dir django djangorestframework python-dotenv\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
             "chiscode-express":   "FROM node:20-slim\nWORKDIR /home/user\nRUN npm install -g npm@latest nodemon\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
-            b"chiscode-static":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
+            "chiscode-static":    "FROM python:3.11-slim\nWORKDIR /home/user\nRUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*\n",
         }
 
         def _build_one(name: str, dockerfile: str) -> str:
@@ -363,36 +363,36 @@ def create_app() -> FastAPI:
                                 if re.match(r'^[a-z0-9]{8,}$', t):
                                     return t
 
-                if result.returncode != 0:
-                    return f"error:{result.stderr[:200]}"
+                    if result.returncode != 0:
+                        return f"error:{result.stderr[:200]}"
 
-                return f"built-but-id-not-parsed:{output[:100]}"
+                    return f"built-but-id-not-parsed:{output[:100]}"
 
-            except subprocess.TimeoutExpired:
-                return "timeout"
+                except subprocess.TimeoutExpired:
+                    return "timeout"
 
-    loop    = asyncio.get_running_loop()
-    results = {}
+        loop    = asyncio.get_running_loop()
+        results = {}
 
-    for name, dockerfile in TEMPLATES.items():
-        env_key  = f"E2B_TEMPLATE_{name.replace('chiscode-', '').upper().replace('-', '_')}"
-        existing = os.environ.get(env_key, "")
-        if existing:
-            results[name] = f"already-built:{existing}"
-            continue
-        print(f"Building {name}...")
-        tid = await loop.run_in_executor(None, _build_one, name, dockerfile)
-        results[name] = tid
-        print(f"{name} → {tid}")
+        for name, dockerfile in TEMPLATES.items():
+            env_key  = f"E2B_TEMPLATE_{name.replace('chiscode-', '').upper().replace('-', '_')}"
+            existing = os.environ.get(env_key, "")
+            if existing:
+                results[name] = f"already-built:{existing}"
+                continue
+            print(f"Building {name}...")
+            tid = await loop.run_in_executor(None, _build_one, name, dockerfile)
+            results[name] = tid
+            print(f"{name} → {tid}")
 
-    return {
-        "message": "Done. Add these to HF Spaces secrets then restart.",
-        "secrets": {
-            f"E2B_TEMPLATE_{n.replace('chiscode-','').upper().replace('-','_')}": v
-            for n, v in results.items()
-        },
-        "raw": results,
-    }
+        return {
+            "message": "Done. Add these to HF Spaces secrets then restart.",
+            "secrets": {
+                f"E2B_TEMPLATE_{n.replace('chiscode-','').upper().replace('-','_')}": v
+                for n, v in results.items()
+            },
+            "raw": results,
+        }
 
     @app.get("/admin/debug-e2b-cli")
     async def debug_e2b_cli(x_admin_key: str = Header(...)):
