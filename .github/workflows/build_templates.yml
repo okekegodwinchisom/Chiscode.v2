@@ -1,0 +1,43 @@
+name: Build E2B Templates
+
+on:
+  workflow_dispatch:  # Manual trigger from GitHub Actions tab
+
+jobs:
+  build-templates:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install E2B CLI
+        run: npm install -g @e2b/cli
+      
+      - name: Build E2B Templates
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          # Build each template
+          e2b template build --name chiscode-nextjs
+          e2b template build --name chiscode-sveltekit
+          e2b template build --name chiscode-react
+          e2b template build --name chiscode-vue
+          e2b template build --name chiscode-fastapi
+          e2b template build --name chiscode-django
+          e2b template build --name chiscode-express
+          e2b template build --name chiscode-static
+      
+      - name: List templates and save IDs
+        run: e2b template list > template-ids.txt
+      
+      - name: Upload template IDs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-ids
+          path: template-ids.txt
