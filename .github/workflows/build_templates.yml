@@ -1,43 +1,82 @@
-name: Build E2B Templates
+- name: Install E2B CLI
+        run: pip install e2b --upgrade
 
-on:
-  workflow_dispatch:  # Manual trigger from GitHub Actions tab
-
-jobs:
-  build-templates:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install E2B CLI
-        run: npm install -g @e2b/cli
-      
-      - name: Build E2B Templates
+      - name: Build all templates
         env:
+          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          # Build each template
-          e2b template build --name chiscode-nextjs
-          e2b template build --name chiscode-sveltekit
-          e2b template build --name chiscode-react
-          e2b template build --name chiscode-vue
-          e2b template build --name chiscode-fastapi
-          e2b template build --name chiscode-django
-          e2b template build --name chiscode-express
-          e2b template build --name chiscode-static
-      
-      - name: List templates and save IDs
-        run: e2b template list > template-ids.txt
-      
-      - name: Upload template IDs as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: template-ids
-          path: template-ids.txt
+          mkdir -p /tmp/e2b-templates
+
+          build_template() {
+            NAME=$1
+            DOCKERFILE=$2
+            DIR="/tmp/e2b-templates/$NAME"
+            mkdir -p "$DIR"
+            printf '%s' "$DOCKERFILE" > "$DIR/e2b.Dockerfile"
+            echo "=== Building $NAME ==="
+            OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
+            echo "$OUTPUT"
+            # Parse ID from output
+            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
+            if [ -z "$ID" ]; then
+              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
+            fi
+            ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
+            echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
+            echo "→ ${ENVKEY}=${ID}"
+          }
+
+          build_template "chiscode-nextjs" \
+"FROM node:20-slim
+WORKDIR /home/user
+RUN npm install -g npm@latest
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-sveltekit" \
+"FROM node:20-slim
+WORKDIR /home/user
+RUN npm install -g npm@latest
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-react" \
+"FROM node:20-slim
+WORKDIR /home/user
+RUN npm install -g npm@latest
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-vue" \
+"FROM node:20-slim
+WORKDIR /home/user
+RUN npm install -g npm@latest
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-fastapi" \
+"FROM python:3.11-slim
+WORKDIR /home/user
+RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-django" \
+"FROM python:3.11-slim
+WORKDIR /home/user
+RUN pip install --no-cache-dir django djangorestframework python-dotenv
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-express" \
+"FROM node:20-slim
+WORKDIR /home/user
+RUN npm install -g npm@latest nodemon
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+          build_template "chiscode-static" \
+"FROM python:3.11-slim
+WORKDIR /home/user
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+
+      - name: Show template IDs
+        run: |
+          echo "=============================="
+          echo "Add these to HF Spaces secrets"
+          echo "=============================="
+          cat /tmp/template_ids.env
