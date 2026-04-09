@@ -1,11 +1,6 @@
-name: Build E2B Templates (File-Based)
+name: Build E2B Templates (CLI)
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'templates/**'
-      - '.github/workflows/build-templates.yml'
   workflow_dispatch:
 
 jobs:
@@ -16,84 +11,29 @@ jobs:
       matrix:
         template:
           - name: nextjs
-            port: 3000
-            start: "npm run dev"
           - name: sveltekit
-            port: 5173
-            start: "npm run dev"
           - name: react
-            port: 3000
-            start: "npm start"
           - name: vue
-            port: 5173
-            start: "npm run dev"
           - name: fastapi
-            port: 8000
-            start: "uvicorn main:app --host 0.0.0.0 --port 8000"
           - name: django
-            port: 8000
-            start: "python manage.py runserver 0.0.0.0:8000"
           - name: express
-            port: 3000
-            start: "npm start"
           - name: static
-            port: 8080
-            start: "python -m http.server 8080"
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Install E2B CLI
+        run: npm install -g @e2b/cli
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install E2B
-        run: npm install e2b@latest
-
-      - name: Build template
+      - name: Build ${{ matrix.template.name }} template
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
         run: |
-          mkdir -p templates/chiscode-${{ matrix.template.name }}
-          cd templates/chiscode-${{ matrix.template.name }}
-          
-          # Create template definition
-          cat > build.ts << 'EOF'
-          import { build, Template } from 'e2b';
-          
-          const template = Template()
-            .fromDockerfile(`
+          e2b template build --name chiscode-${{ matrix.template.name }} \
+            --dockerfile <(echo "
               FROM node:20-slim
               WORKDIR /home/user
               RUN npm install -g npm@latest
               RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
-              EXPOSE ${{ matrix.template.port }}
-              CMD ["${{ matrix.template.start }}"]
-            `);
-          
-          build(template, { name: 'chiscode-${{ matrix.template.name }}' })
-            .then(result => {
-              console.log('Template ID:', result.templateID);
-              const fs = require('fs');
-              // Convert template name to uppercase using JavaScript
-              const upperName = '${{ matrix.template.name }}'.toUpperCase();
-              fs.appendFileSync('/tmp/all_ids.env', 
-                `E2B_TEMPLATE_${upperName}=${result.templateID}\n`);
-            })
-            .catch(err => {
-              console.error('Build failed:', err);
-              process.exit(1);
-            });
-          EOF
-          
-          npx ts-node build.ts
+            ")
 
-      - name: Collect all template IDs
-        if: always()
-        run: |
-          echo "=============================="
-          echo "All Template IDs:"
-          echo "=============================="
-          cat /tmp/all_ids.env 2>/dev/null || echo "No IDs generated"
+      - name: List all templates
+        run: e2b template list
