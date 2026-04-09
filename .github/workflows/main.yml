@@ -45,8 +45,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
+        uses: actions/setup-node@rt:        with:
           node-version: '20'
 
       - name: Install E2B
@@ -56,7 +55,7 @@ jobs:
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
         run: |
-          mkdir -p templates/chiscode-${{ matrix.template.name }}
+          E2B_TEMPLATE_${{ matrix.template.name }}=${result.templateID}
           cd templates/chiscode-${{ matrix.template.name }}
           
           # Create template definition
