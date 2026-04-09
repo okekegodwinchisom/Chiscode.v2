@@ -1,4 +1,21 @@
-- name: Install E2B CLI
+name: Build E2B Templates
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install E2B CLI
         run: pip install e2b --upgrade
 
       - name: Build all templates
@@ -17,60 +34,51 @@
             echo "=== Building $NAME ==="
             OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
             echo "$OUTPUT"
-            # Parse ID from output
             ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
             if [ -z "$ID" ]; then
               ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
             fi
             ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
             echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
-            echo "→ ${ENVKEY}=${ID}"
+            echo "-> ${ENVKEY}=${ID}"
           }
 
-          build_template "chiscode-nextjs" \
-"FROM node:20-slim
+          build_template "chiscode-nextjs" "FROM node:20-slim
 WORKDIR /home/user
 RUN npm install -g npm@latest
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-sveltekit" \
-"FROM node:20-slim
+          build_template "chiscode-sveltekit" "FROM node:20-slim
 WORKDIR /home/user
 RUN npm install -g npm@latest
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-react" \
-"FROM node:20-slim
+          build_template "chiscode-react" "FROM node:20-slim
 WORKDIR /home/user
 RUN npm install -g npm@latest
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-vue" \
-"FROM node:20-slim
+          build_template "chiscode-vue" "FROM node:20-slim
 WORKDIR /home/user
 RUN npm install -g npm@latest
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-fastapi" \
-"FROM python:3.11-slim
+          build_template "chiscode-fastapi" "FROM python:3.11-slim
 WORKDIR /home/user
 RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-django" \
-"FROM python:3.11-slim
+          build_template "chiscode-django" "FROM python:3.11-slim
 WORKDIR /home/user
 RUN pip install --no-cache-dir django djangorestframework python-dotenv
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-express" \
-"FROM node:20-slim
+          build_template "chiscode-express" "FROM node:20-slim
 WORKDIR /home/user
 RUN npm install -g npm@latest nodemon
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
-          build_template "chiscode-static" \
-"FROM python:3.11-slim
+          build_template "chiscode-static" "FROM python:3.11-slim
 WORKDIR /home/user
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
 
@@ -80,3 +88,9 @@ RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
           echo "Add these to HF Spaces secrets"
           echo "=============================="
           cat /tmp/template_ids.env
+
+      - name: Upload template IDs
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2b-template-ids
+          path: /tmp/template_ids.env
