@@ -1,82 +1,97 @@
-- name: Install E2B CLI
-        run: pip install e2b --upgrade
+name: Build E2B Templates (File-Based)
 
-      - name: Build all templates
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'templates/**'
+      - '.github/workflows/build-templates.yml'
+  workflow_dispatch:
+
+jobs:
+  build-templates:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        template:
+          - name: nextjs
+            port: 3000
+            start: "npm run dev"
+          - name: sveltekit
+            port: 5173
+            start: "npm run dev"
+          - name: react
+            port: 3000
+            start: "npm start"
+          - name: vue
+            port: 5173
+            start: "npm run dev"
+          - name: fastapi
+            port: 8000
+            start: "uvicorn main:app --host 0.0.0.0 --port 8000"
+          - name: django
+            port: 8000
+            start: "python manage.py runserver 0.0.0.0:8000"
+          - name: express
+            port: 3000
+            start: "npm start"
+          - name: static
+            port: 8080
+            start: "python -m http.server 8080"
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install E2B
+        run: npm install e2b@latest
+
+      - name: Build template
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          mkdir -p /tmp/e2b-templates
+          mkdir -p templates/chiscode-${{ matrix.template.name }}
+          cd templates/chiscode-${{ matrix.template.name }}
+          
+          # Create template definition
+          cat > build.ts << 'EOF'
+          import { build, Template } from 'e2b';
+          
+          const template = Template()
+            .fromDockerfile(`
+              FROM node:20-slim
+              WORKDIR /home/user
+              RUN npm install -g npm@latest
+              RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+              EXPOSE ${{ matrix.template.port }}
+              CMD ["${{ matrix.template.start }}"]
+            `);
+          
+          build(template, { name: 'chiscode-${{ matrix.template.name }}' })
+            .then(result => {
+              console.log('Template ID:', result.templateID);
+              const fs = require('fs');
+              fs.appendFileSync('/tmp/all_ids.env', 
+                'E2B_TEMPLATE_${{ matrix.template.name | upper }}=${result.templateID}\n');
+            })
+            .catch(err => {
+              console.error('Build failed:', err);
+              process.exit(1);
+            });
+          EOF
+          
+          npx ts-node build.ts
 
-          build_template() {
-            NAME=$1
-            DOCKERFILE=$2
-            DIR="/tmp/e2b-templates/$NAME"
-            mkdir -p "$DIR"
-            printf '%s' "$DOCKERFILE" > "$DIR/e2b.Dockerfile"
-            echo "=== Building $NAME ==="
-            OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
-            echo "$OUTPUT"
-            # Parse ID from output
-            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
-            if [ -z "$ID" ]; then
-              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
-            fi
-            ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
-            echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
-            echo "→ ${ENVKEY}=${ID}"
-          }
-
-          build_template "chiscode-nextjs" \
-"FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-sveltekit" \
-"FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-react" \
-"FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-vue" \
-"FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-fastapi" \
-"FROM python:3.11-slim
-WORKDIR /home/user
-RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-django" \
-"FROM python:3.11-slim
-WORKDIR /home/user
-RUN pip install --no-cache-dir django djangorestframework python-dotenv
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-express" \
-"FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest nodemon
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-static" \
-"FROM python:3.11-slim
-WORKDIR /home/user
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-      - name: Show template IDs
+      - name: Collect all template IDs
+        if: always()
         run: |
           echo "=============================="
-          echo "Add these to HF Spaces secrets"
+          echo "All Template IDs:"
           echo "=============================="
-          cat /tmp/template_ids.env
+          cat /tmp/all_ids.env 2>/dev/null || echo "No IDs generated"
