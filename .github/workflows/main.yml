@@ -77,8 +77,10 @@ jobs:
             .then(result => {
               console.log('Template ID:', result.templateID);
               const fs = require('fs');
+              // Convert template name to uppercase using JavaScript
+              const upperName = '${{ matrix.template.name }}'.toUpperCase();
               fs.appendFileSync('/tmp/all_ids.env', 
-                'E2B_TEMPLATE_${{ matrix.template.name | upper }}=${result.templateID}\n');
+                `E2B_TEMPLATE_${upperName}=${result.templateID}\n`);
             })
             .catch(err => {
               console.error('Build failed:', err);
