@@ -56,7 +56,6 @@ jobs:
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
         run: |
-          E2B_TEMPLATE_${{ matrix.template.name }}=${result.templateID}
           cd templates/chiscode-${{ matrix.template.name }}
           
           # Create template definition
