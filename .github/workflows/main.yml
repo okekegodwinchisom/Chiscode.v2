@@ -18,69 +18,93 @@ jobs:
       - name: Install E2B CLI
         run: pip install e2b --upgrade
 
-      - name: Build all templates
+      - name: Create Dockerfiles
+        run: |
+          mkdir -p /tmp/e2b-templates/chiscode-nextjs
+          mkdir -p /tmp/e2b-templates/chiscode-sveltekit
+          mkdir -p /tmp/e2b-templates/chiscode-react
+          mkdir -p /tmp/e2b-templates/chiscode-vue
+          mkdir -p /tmp/e2b-templates/chiscode-fastapi
+          mkdir -p /tmp/e2b-templates/chiscode-django
+          mkdir -p /tmp/e2b-templates/chiscode-express
+          mkdir -p /tmp/e2b-templates/chiscode-static
+
+          cat > /tmp/e2b-templates/chiscode-nextjs/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-sveltekit/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-react/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-vue/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-fastapi/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-django/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN pip install --no-cache-dir django djangorestframework python-dotenv
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-express/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest nodemon
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+          cat > /tmp/e2b-templates/chiscode-static/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+
+      - name: Build templates
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          mkdir -p /tmp/e2b-templates
+          touch /tmp/template_ids.env
 
-          build_template() {
-            NAME=$1
-            DOCKERFILE=$2
-            DIR="/tmp/e2b-templates/$NAME"
-            mkdir -p "$DIR"
-            printf '%s' "$DOCKERFILE" > "$DIR/e2b.Dockerfile"
+          for NAME in chiscode-nextjs chiscode-sveltekit chiscode-react chiscode-vue chiscode-fastapi chiscode-django chiscode-express chiscode-static; do
             echo "=== Building $NAME ==="
-            OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
+            OUTPUT=$(e2b template build --name "$NAME" --path "/tmp/e2b-templates/$NAME" 2>&1)
             echo "$OUTPUT"
-            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
+
+            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+(?= '"$NAME"')' | head -1)
             if [ -z "$ID" ]; then
               ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
             fi
+
             ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
             echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
             echo "-> ${ENVKEY}=${ID}"
-          }
-
-          build_template "chiscode-nextjs" "FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-sveltekit" "FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-react" "FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-vue" "FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-fastapi" "FROM python:3.11-slim
-WORKDIR /home/user
-RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-django" "FROM python:3.11-slim
-WORKDIR /home/user
-RUN pip install --no-cache-dir django djangorestframework python-dotenv
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-express" "FROM node:20-slim
-WORKDIR /home/user
-RUN npm install -g npm@latest nodemon
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-static" "FROM python:3.11-slim
-WORKDIR /home/user
-RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
+          done
 
       - name: Show template IDs
         run: |
