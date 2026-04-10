@@ -2,19 +2,21 @@ name: Build E2B Templates
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - 'templates/**'
-      - '.github/workflows/build-templates.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-templates:
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.11"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,140 +28,114 @@ jobs:
           npm install -g @e2b/cli
           e2b --version
 
-      - name: Authenticate with E2B
-        env:
-          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
-        run: |
-          # Create E2B config directory and file
-          mkdir -p ~/.e2b
-          cat > ~/.e2b/config.json << EOF
-          {
-            "accessToken": "$E2B_ACCESS_TOKEN"
-          }
-          EOF
-          echo "E2B authentication configured"
+      - name: Install E2B Python SDK (optional)
+        run: pip install e2b --upgrade
 
-      - name: Build all templates
+      - name: Create Dockerfiles
+        run: |
+          mkdir -p /tmp/e2b-templates/chiscode-nextjs
+          mkdir -p /tmp/e2b-templates/chiscode-sveltekit
+          mkdir -p /tmp/e2b-templates/chiscode-react
+          mkdir -p /tmp/e2b-templates/chiscode-vue
+          mkdir -p /tmp/e2b-templates/chiscode-fastapi
+          mkdir -p /tmp/e2b-templates/chiscode-django
+          mkdir -p /tmp/e2b-templates/chiscode-express
+          mkdir -p /tmp/e2b-templates/chiscode-static
+          mkdir -p /tmp/e2b-templates/chiscode-rust
+          
+          # Node.js Templates
+          cat > /tmp/e2b-templates/chiscode-nextjs/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-sveltekit/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-react/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-vue/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-express/e2b.Dockerfile << 'EOF'
+          FROM node:20-slim
+          WORKDIR /home/user
+          RUN npm install -g npm@latest nodemon
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          # Python Templates
+          cat > /tmp/e2b-templates/chiscode-fastapi/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-django/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN pip install --no-cache-dir django djangorestframework python-dotenv
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          cat > /tmp/e2b-templates/chiscode-static/e2b.Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /home/user
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          EOF
+          
+          # Rust Template
+          cat > /tmp/e2b-templates/chiscode-rust/e2b.Dockerfile << 'EOF'
+          FROM rust:1.75-slim
+          WORKDIR /home/user
+          RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+          RUN cargo install cargo-watch
+          EOF
+
+      - name: Build templates
         env:
           E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          mkdir -p /tmp/e2b-templates
           touch /tmp/template_ids.env
-
-          build_template() {
-            NAME=$1
-            DOCKERFILE=$2
-            DIR="/tmp/e2b-templates/$NAME"
-            mkdir -p "$DIR"
-            printf '%s' "$DOCKERFILE" > "$DIR/e2b.Dockerfile"
+          for NAME in chiscode-nextjs chiscode-sveltekit chiscode-react chiscode-vue chiscode-fastapi chiscode-django chiscode-express chiscode-static chiscode-rust; do
             echo "=== Building $NAME ==="
-            
-            # Run build and capture output
-            OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
-            BUILD_EXIT_CODE=$?
+            OUTPUT=$(e2b template build --name "$NAME" --path "/tmp/e2b-templates/$NAME" 2>&1)
             echo "$OUTPUT"
-            
-            if [ $BUILD_EXIT_CODE -ne 0 ]; then
-              echo "❌ Failed to build $NAME"
-              echo "Error details: $OUTPUT"
-              return $BUILD_EXIT_CODE
-            fi
-            
-            # Parse ID from output
-            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
+            ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+(?= '"$NAME"')' | head -1)
             if [ -z "$ID" ]; then
-              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{20,}' | head -1)
+              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
             fi
-            if [ -z "$ID" ]; then
-              ID=$(echo "$OUTPUT" | grep -oP 'chiscode-[a-z]+-\K[a-z0-9]+' | head -1)
-            fi
-            
-            if [ -n "$ID" ]; then
-              ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
-              echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
-              echo "✅ ${ENVKEY}=${ID}"
-            else
-              echo "⚠️ Could not extract ID for $NAME"
-              echo "${NAME}=unknown" >> /tmp/template_ids.env
-            fi
-          }
-
-          # Node.js / JavaScript Templates
-          build_template "chiscode-nextjs" \
-            "FROM node:20-slim
-            WORKDIR /home/user
-            RUN npm install -g npm@latest
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-sveltekit" \
-            "FROM node:20-slim
-            WORKDIR /home/user
-            RUN npm install -g npm@latest
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-react" \
-            "FROM node:20-slim
-            WORKDIR /home/user
-            RUN npm install -g npm@latest
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-vue" \
-            "FROM node:20-slim
-            WORKDIR /home/user
-            RUN npm install -g npm@latest
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-express" \
-            "FROM node:20-slim
-            WORKDIR /home/user
-            RUN npm install -g npm@latest nodemon
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          # Python Templates
-          build_template "chiscode-fastapi" \
-            "FROM python:3.11-slim
-            WORKDIR /home/user
-            RUN pip install --no-cache-dir fastapi uvicorn[standard] httpx pydantic python-dotenv sqlalchemy alembic
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-django" \
-            "FROM python:3.11-slim
-            WORKDIR /home/user
-            RUN pip install --no-cache-dir django djangorestframework python-dotenv
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          build_template "chiscode-static" \
-            "FROM python:3.11-slim
-            WORKDIR /home/user
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*"
-
-          # Rust Template
-          build_template "chiscode-rust" \
-            "FROM rust:1.75-slim
-            WORKDIR /home/user
-            RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
-            RUN cargo install cargo-watch"
-
-          echo "=============================="
-          echo "Build completed"
-          echo "=============================="
+            ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
+            echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
+            echo "-> ${ENVKEY}=${ID}"
+          done
 
       - name: Show template IDs
-        if: always()
         run: |
           echo "=============================="
-          echo "Template IDs generated:"
+          echo "Add these to HF Spaces secrets"
           echo "=============================="
-          if [ -f /tmp/template_ids.env ]; then
-            cat /tmp/template_ids.env
-          else
-            echo "No template IDs file found"
-          fi
+          cat /tmp/template_ids.env
 
-      - name: Upload template IDs as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload template IDs
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: e2b-template-ids
           path: /tmp/template_ids.env
