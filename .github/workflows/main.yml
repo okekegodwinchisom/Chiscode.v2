@@ -26,8 +26,18 @@ jobs:
           npm install -g @e2b/cli
           e2b --version
 
-      - name: Install Python dependencies
-        run: pip install e2b --upgrade
+      - name: Authenticate with E2B
+        env:
+          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
+        run: |
+          # Create E2B config directory and file
+          mkdir -p ~/.e2b
+          cat > ~/.e2b/config.json << EOF
+          {
+            "accessToken": "$E2B_ACCESS_TOKEN"
+          }
+          EOF
+          echo "E2B authentication configured"
 
       - name: Build all templates
         env:
@@ -44,16 +54,35 @@ jobs:
             mkdir -p "$DIR"
             printf '%s' "$DOCKERFILE" > "$DIR/e2b.Dockerfile"
             echo "=== Building $NAME ==="
+            
+            # Run build and capture output
             OUTPUT=$(e2b template build --name "$NAME" --path "$DIR" 2>&1)
+            BUILD_EXIT_CODE=$?
             echo "$OUTPUT"
+            
+            if [ $BUILD_EXIT_CODE -ne 0 ]; then
+              echo "❌ Failed to build $NAME"
+              echo "Error details: $OUTPUT"
+              return $BUILD_EXIT_CODE
+            fi
+            
             # Parse ID from output
             ID=$(echo "$OUTPUT" | grep -oP '(?<=sandbox template )\S+' | head -1)
             if [ -z "$ID" ]; then
-              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{10,}' | head -1)
+              ID=$(echo "$OUTPUT" | grep -oP '[a-z0-9]{20,}' | head -1)
             fi
-            ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
-            echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
-            echo "→ ${ENVKEY}=${ID}"
+            if [ -z "$ID" ]; then
+              ID=$(echo "$OUTPUT" | grep -oP 'chiscode-[a-z]+-\K[a-z0-9]+' | head -1)
+            fi
+            
+            if [ -n "$ID" ]; then
+              ENVKEY="E2B_TEMPLATE_$(echo $NAME | sed 's/chiscode-//' | tr 'a-z-' 'A-Z_')"
+              echo "${ENVKEY}=${ID}" >> /tmp/template_ids.env
+              echo "✅ ${ENVKEY}=${ID}"
+            else
+              echo "⚠️ Could not extract ID for $NAME"
+              echo "${NAME}=unknown" >> /tmp/template_ids.env
+            fi
           }
 
           # Node.js / JavaScript Templates
@@ -112,19 +141,24 @@ jobs:
             RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
             RUN cargo install cargo-watch"
 
+          echo "=============================="
+          echo "Build completed"
+          echo "=============================="
+
       - name: Show template IDs
+        if: always()
         run: |
           echo "=============================="
-          echo "Add these to HF Spaces secrets"
+          echo "Template IDs generated:"
           echo "=============================="
-          cat /tmp/template_ids.env
-          echo ""
-          echo "=============================="
-          echo "Secret names to add:"
-          echo "=============================="
-          cat /tmp/template_ids.env | cut -d'=' -f1
+          if [ -f /tmp/template_ids.env ]; then
+            cat /tmp/template_ids.env
+          else
+            echo "No template IDs file found"
+          fi
 
       - name: Upload template IDs as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2b-template-ids
