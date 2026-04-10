@@ -44,6 +44,9 @@ jobs:
           import { Template } from 'e2b';
           import { writeFileSync } from 'fs';
           
+          // Set API key explicitly
+          process.env.E2B_API_KEY = '${E2B_API_KEY}';
+          
           const dockerfileContent = \`${DOCKERFILE_CONTENT}\`;
           
           // Define the template using the v2 API
@@ -68,8 +71,8 @@ jobs:
           }
           EOF
             
-            # Execute the build script from the directory with e2b installed
-            node "build-${NAME}.mjs"
+            # Execute the build script with the API key explicitly passed
+            E2B_API_KEY="${E2B_API_KEY}" node "build-${NAME}.mjs"
           }
           
           # Build each template with its Dockerfile
