@@ -1,0 +1,1240 @@
+
+"""
+ChisCode — System Prompt Builder with SkillOpt Integration
+===========================================================
+Builds production-quality, context-aware system prompts for code generation.
+
+Architecture:
+  - Stack-specific rules injected per detected framework
+  - Complexity scaling: simple apps get focused prompts, complex apps get
+    architecture guidance, auth patterns, error handling standards
+  - File-level hints: globals.css, env files, schema files always included
+  - Anti-patterns: common LLM mistakes explicitly called out per stack
+  - SkillOpt integration: optimized skill content loaded from skill file
+  - Immutable stack block: correctness guarantees never optimized away
+  - AGENTS.md integration: authoritative project standards guide
+"""
+from __future__ import annotations
+
+import os
+import re
+from enum import Enum
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, List, Optional, Union
+
+from app.agents.prompts.generation_context import get_generation_context
+from app.agents.prompts.universal_rules import get_universal_rules
+from app.agents.prompts.stack_detection import (
+    detect_stack_flags,
+    get_stack_description,
+)
+
+from app.agents.prompts.stack_rules import (
+    get_fastapi_rules,
+    get_sveltekit_rules,
+    get_react_rules,
+    get_nextjs_rules,
+    get_node_rules,
+    get_static_rules,
+    get_rust_rules,
+    get_htmx_rules,
+    get_alpine_rules,
+    get_db_rules,
+    get_django_rules,
+    get_dashboard_stack_rules,
+)
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants & Enums
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Complexity(Enum):
+    """Complexity levels for scaling guidance depth."""
+    SIMPLE = "simple"
+    MODERATE = "moderate"
+    COMPLEX = "complex"
+
+
+# Keyword constants for stack detection
+NEXTJS_KEYWORDS = ("next", "next.js")
+SVELTEKIT_KEYWORDS = ("svelte", "sveltekit")
+REACT_KEYWORDS = ("react", "vite")
+FASTAPI_KEYWORDS = ("fastapi",)
+PYTHON_KEYWORDS = ("python", "flask", "django")
+NODE_KEYWORDS = ("node", "express", "nest")
+RUST_KEYWORDS = ("rust", "axum", "actix", "rocket")
+HTMX_KEYWORDS = ("htmx",)
+ALPINE_KEYWORDS = ("alpine", "alpine.js")
+
+# Auth-related keywords
+AUTH_KEYWORDS = ("auth", "login", "register", "signup", "signin", "authentication")
+NEXTAUTH_KEYWORDS = ("next-auth", "auth.js", "nextauth")
+JWT_KEYWORDS = ("jwt", "jose", "jsonwebtoken")
+
+# Database ORM keywords
+PRISMA_KEYWORDS = ("prisma",)
+DRIZZLE_KEYWORDS = ("drizzle",)
+SQLALCHEMY_KEYWORDS = ("sqlalchemy", "alembic")
+MONGOOSE_KEYWORDS = ("mongoose", "mongodb", "mongo")
+
+# Integration keywords
+PAYMENT_KEYWORDS = ("stripe", "payment", "polar", "paddle", "lemon")
+STORAGE_KEYWORDS = ("s3", "upload", "storage", "cloudinary")
+QUEUE_KEYWORDS = ("redis", "celery", "queue", "worker", "bull")
+REALTIME_KEYWORDS = ("socket", "websocket", "realtime", "socket.io")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENTS.md Loading
+# ─────────────────────────────────────────────────────────────────────────────
+
+_AGENTS_MD_CACHE: str | None = None
+_AGENTS_MD_VERSION: str = "v1.0.0"
+_AGENTS_MD_LOAD_TIME: float = 0.0
+
+
+def load_agents_md() -> str:
+    """
+    Load the AGENTS.md file from the project root.
+    This serves as the authoritative guide for all code generation.
+    """
+    global _AGENTS_MD_CACHE, _AGENTS_MD_VERSION, _AGENTS_MD_LOAD_TIME
+    
+    if _AGENTS_MD_CACHE is None:
+        # Look for AGENTS.md in multiple locations
+        search_paths = [
+            Path(__file__).parent.parent.parent / "AGENTS.md",  # Project root
+            Path(__file__).parent.parent / "AGENTS.md",        # Agents directory
+            Path.cwd() / "AGENTS.md",                          # Current working directory
+        ]
+        
+        for path in search_paths:
+            if path.exists():
+                _AGENTS_MD_CACHE = path.read_text(encoding="utf-8")
+                _AGENTS_MD_VERSION = _extract_agents_version(_AGENTS_MD_CACHE)
+                _AGENTS_MD_LOAD_TIME = path.stat().st_mtime
+                break
+        
+        # Fallback: embedded AGENTS.md content
+        if _AGENTS_MD_CACHE is None:
+            _AGENTS_MD_CACHE = _get_fallback_agents_md()
+            _AGENTS_MD_VERSION = "v0.0.0-fallback"
+    
+    return _AGENTS_MD_CACHE
+
+
+def _extract_agents_version(content: str) -> str:
+    """Extract version from AGENTS.md header."""
+    for line in content.splitlines():
+        if "Version:" in line:
+            return line.split("Version:")[-1].strip()
+        if "v" in line and "." in line and len(line) < 30:
+            # Try to find version pattern like v1.0.0
+            import re
+            match = re.search(r'v\d+\.\d+\.\d+', line)
+            if match:
+                return match.group()
+    return "v1.0.0"
+
+
+def _get_fallback_agents_md() -> str:
+    """Fallback AGENTS.md content if file not found."""
+    return """# AGENTS.md - AI Developer Guide
+
+## Project Overview
+This is a full-stack web application with:
+- Frontend: HTMX + Alpine.js + Tailwind CSS
+- Backend: FastAPI (Python 3.11+) with WebSocket support
+- Database: PostgreSQL with SQLAlchemy ORM
+
+## Code Quality Standards
+1. **Type Hints**: ALL functions MUST have type hints
+2. **Docstrings**: ALL public functions MUST have docstrings
+3. **Error Handling**: ALL operations MUST include error handling
+4. **Imports**: NO duplicate imports; ALL imports MUST be used
+5. **Naming**: snake_case for functions, PascalCase for classes
+
+## FastAPI Standards
+1. **Routers**: MUST use `/api/v1/` prefix
+2. **Response Models**: ALL endpoints MUST have response models
+3. **Status Codes**: Use appropriate HTTP status codes
+4. **Dependencies**: Use `Depends()` for dependency injection
+5. **WebSockets**: Include proper connection management
+
+## File Generation Order (CRITICAL)
+1. Root Files → 2. Config → 3. Models → 4. Schemas → 5. Utils → 6. Services → 7. API Routes → 8. Templates → 9. Static → 10. Documentation → 11. main.py (LAST!)
+"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skill Loading
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SKILL_CACHE: str | None = None
+_SKILL_VERSION: str = "v1.0.0"
+_SKILL_LOAD_TIME: float = 0.0
+_SECURITY_SKILL_CACHE: str | None = None
+
+
+def _load_generation_skill() -> str:
+    """
+    Load the SkillOpt-optimized generation skill from the skill file.
+    Falls back to base skill if optimized version doesn't exist.
+    """
+    global _SKILL_CACHE, _SKILL_VERSION, _SKILL_LOAD_TIME
+    
+    # Refresh if SKILL_REFRESH env var is set
+    if os.getenv("SKILL_REFRESH"):
+        _SKILL_CACHE = None
+    
+    if _SKILL_CACHE is None:
+        skill_dir = Path(__file__).parent.parent / "skills"
+        optimized = skill_dir / "chiscode_skill_optimized.md"
+        base = skill_dir / "chiscode_skill.md"
+        
+        if optimized.exists():
+            _SKILL_CACHE = optimized.read_text()
+            _SKILL_VERSION = _extract_version(_SKILL_CACHE)
+            _SKILL_LOAD_TIME = optimized.stat().st_mtime
+        elif base.exists():
+            _SKILL_CACHE = base.read_text()
+            _SKILL_VERSION = "v1.0.0"
+            _SKILL_LOAD_TIME = base.stat().st_mtime
+        else:
+            _SKILL_CACHE = _get_fallback_skill()
+            _SKILL_VERSION = "v0.0.0-fallback"
+    
+    return _SKILL_CACHE
+
+
+def _load_security_skill() -> str:
+    global _SECURITY_SKILL_CACHE
+    if _SECURITY_SKILL_CACHE is None:
+        skill_dir = Path(__file__).parent.parent / "skills"
+        path = skill_dir / "chiscode_security_skill.md"
+        _SECURITY_SKILL_CACHE = path.read_text() if path.exists() else ""
+    return _SECURITY_SKILL_CACHE
+
+
+def _extract_version(skill_content: str) -> str:
+    """Extract version from skill file header."""
+    for line in skill_content.splitlines():
+        if "Version:" in line:
+            return line.split("Version:")[-1].strip()
+    return "v1.0.0"
+
+
+def _get_fallback_skill() -> str:
+    """Fallback skill if no skill file exists."""
+    return """=== UNIVERSAL RULES ===
+- Generate COMPLETE files — no placeholders
+- Every import must resolve
+- All code must be runnable
+- Follow the critical files checklist
+- Think step by step
+"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stack-Specific Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_stack_specific_rules(stack: dict, auth_required: bool, database: str) -> str:
+    """
+    Get stack-specific rules from stack_rules.py.
+    This is the DETAILED rules that were previously not being included.
+    """
+    fe = _get_stack_string(stack, "frontend")
+    be = _get_stack_string(stack, "backend")
+    
+    rules = []
+    
+    # FastAPI rules
+    if _is_fastapi_stack(stack) or _is_python_stack(stack):
+        has_alembic = "alembic" in " ".join(_normalize_extras(stack.get("extras", []))).lower()
+        has_websockets = any(x in " ".join(_normalize_extras(stack.get("extras", []))).lower() 
+                            for x in ("websocket", "realtime", "socket"))
+        has_durable = "pg_durable" in " ".join(_normalize_extras(stack.get("extras", []))).lower()
+        
+        rules.append(get_fastapi_rules(
+            has_alembic=has_alembic,
+            has_websockets=has_websockets,
+            has_auth=auth_required,
+            has_durable=has_durable,
+        ))
+    
+    # HTMX rules
+    if _is_htmx_stack(stack):
+        rules.append(get_htmx_rules())
+    
+    # Alpine rules
+    if _is_alpine_stack(stack):
+        rules.append(get_alpine_rules())
+    
+    # Next.js rules
+    if _is_nextjs_stack(stack):
+        rules.append(get_nextjs_rules())
+    
+    # React rules
+    if _is_react_stack(stack):
+        rules.append(get_react_rules())
+    
+    # SvelteKit rules
+    if _is_sveltekit_stack(stack):
+        rules.append(get_sveltekit_rules())
+    
+    # Database rules
+    if database and database.lower() not in ("none", ""):
+        rules.append(get_db_rules(database, stack))
+    
+    return "\n\n".join(r for r in rules if r)
+
+
+def _extract_anti_patterns_from_skill() -> str:
+    """Extract anti-patterns from the skill file."""
+    skill = _load_generation_skill()
+    lines = skill.splitlines()
+    in_anti = False
+    anti_lines = []
+    
+    for line in lines:
+        if "ANTI-PATTERNS" in line:
+            in_anti = True
+            continue
+        if in_anti:
+            if line.startswith("## ") and "ANTI" not in line:
+                break
+            anti_lines.append(line)
+    
+    return "\n".join(anti_lines) if anti_lines else ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper Functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _normalize_extras(extras_raw: Any) -> List[str]:
+    """Normalize extras to a list of strings."""
+    if not extras_raw:
+        return []
+    if isinstance(extras_raw, str):
+        return [extras_raw]
+    if isinstance(extras_raw, (list, tuple)):
+        return [str(item) for item in extras_raw]
+    return []
+
+
+def _normalize_features(features_raw: Any) -> List[str]:
+    """Normalize features to a list of strings."""
+    if not features_raw:
+        return []
+    if isinstance(features_raw, str):
+        return [features_raw]
+    if isinstance(features_raw, (list, tuple)):
+        return [str(item) for item in features_raw]
+    return []
+
+
+def _get_stack_string(stack: dict, key: str) -> str:
+    """Safely get a string value from stack dict."""
+    value = stack.get(key, "")
+    return str(value).lower() if value else ""
+
+
+def _is_framework_in_stack(stack: dict, keywords: tuple) -> bool:
+    """Check if any framework keywords are present in the stack."""
+    frontend = _get_stack_string(stack, "frontend")
+    backend = _get_stack_string(stack, "backend")
+    extras = " ".join(_normalize_extras(stack.get("extras", []))).lower()
+    combined = f"{frontend} {backend} {extras}"
+    return any(keyword in combined for keyword in keywords)
+
+
+def _is_nextjs_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, NEXTJS_KEYWORDS)
+
+
+def _is_sveltekit_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, SVELTEKIT_KEYWORDS)
+
+
+def _is_react_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, REACT_KEYWORDS) and not _is_nextjs_stack(stack)
+
+
+def _is_fastapi_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, FASTAPI_KEYWORDS)
+
+
+def _is_python_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, PYTHON_KEYWORDS)
+
+
+def _is_node_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, NODE_KEYWORDS)
+
+
+def _is_rust_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, RUST_KEYWORDS)
+
+
+def _is_htmx_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, HTMX_KEYWORDS)
+
+
+def _is_alpine_stack(stack: dict) -> bool:
+    return _is_framework_in_stack(stack, ALPINE_KEYWORDS)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Complexity Classifier
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _classify_complexity(
+    features: List[str],
+    auth_required: bool,
+    database: str,
+    stack: dict,
+) -> Complexity:
+    """Classify project complexity based on features, auth, and stack extras."""
+    score = 0
+    features_list = _normalize_features(features)
+    extras = _normalize_extras(stack.get("extras", []))
+    extras_str = " ".join(extras).lower()
+    
+    # Base score from number of features
+    score += len(features_list)
+    
+    # Auth adds significant complexity
+    if auth_required:
+        score += 3
+    
+    # Database adds complexity
+    if database and database.lower() not in ("none", ""):
+        score += 2
+    
+    # ORMs add complexity
+    if any(kw in extras_str for kw in PRISMA_KEYWORDS + DRIZZLE_KEYWORDS + SQLALCHEMY_KEYWORDS):
+        score += 2
+    
+    # Payment integrations add significant complexity
+    if any(kw in extras_str for kw in PAYMENT_KEYWORDS):
+        score += 3
+    
+    # Queues/workers add complexity
+    if any(kw in extras_str for kw in QUEUE_KEYWORDS):
+        score += 2
+    
+    # WebSockets/realtime add complexity
+    if any(kw in extras_str for kw in REALTIME_KEYWORDS):
+        score += 2
+    
+    # File storage adds slight complexity
+    if any(kw in extras_str for kw in STORAGE_KEYWORDS):
+        score += 1
+    
+    # Multiple frameworks add complexity
+    framework_count = sum([
+        _is_nextjs_stack(stack),
+        _is_fastapi_stack(stack),
+        _is_sveltekit_stack(stack),
+        _is_rust_stack(stack),
+    ])
+    if framework_count >= 2:
+        score += 2
+    
+    if score <= 4:
+        return Complexity.SIMPLE
+    elif score <= 9:
+        return Complexity.MODERATE
+    else:
+        return Complexity.COMPLEX
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IMMUTABLE STACK BLOCK — NEVER OPTIMIZED
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_immutable_stack_block(stack: dict, auth_required: bool) -> str:
+    """
+    Locked stack rules block — only correctness guarantees.
+    These are NEVER optimized by SkillOpt.
+    """
+    fe = _get_stack_string(stack, "frontend")
+    be = _get_stack_string(stack, "backend")
+    
+    sections = [
+        "# ═══════════════════════════════════════════════════════════",
+        "# STACK CONSTRAINTS — LOCKED (IMMUTABLE)",
+        "# ═══════════════════════════════════════════════════════════",
+    ]
+    
+    # CDN-only rule (critical — prevents package.json generation for HTMX projects)
+    if "htmx" in fe or "alpine" in fe:
+        if not any(x in fe for x in ("next", "react", "vue", "svelte", "nuxt")):
+            sections.append(
+                "CDN-ONLY PROJECT: NO package.json, NO npm, NO node_modules. "
+                "Load all JS via <script> tags."
+            )
+    
+    # Framework-specific critical rules — keep these under 200 chars each
+    if "fastapi" in be or "python" in be:
+        sections.append(
+            "FASTAPI: sync get_db() → Generator[Session], sync init_db(), "
+            "DeclarativeBase NOT declarative_base(), model_dump() NOT .dict(), "
+            "extra='ignore' NOT 'forbid'"
+        )
+    
+    if "svelte" in fe:
+        sections.append(
+            "SVELTEKIT: NEVER access localStorage/window/document at module level. "
+            "Use import { browser } from '$app/environment'; if (browser) { ... }"
+        )
+    
+    if "next" in fe:
+        sections.append(
+            "NEXT.JS: Use App Router (app/), NOT Pages Router. "
+            "globals.css ONLY in app/globals.css. Server Components by default."
+        )
+    
+    return "\n\n".join(sections)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_auth_rules(stack: dict, complexity: Complexity) -> str:
+    """Generate authentication rules based on the stack and complexity level."""
+    extras = _normalize_extras(stack.get("extras", []))
+    extras_str = " ".join(extras).lower()
+    
+    is_nextjs = _is_nextjs_stack(stack)
+    is_fastapi = _is_fastapi_stack(stack)
+    is_nextauth = any(kw in extras_str for kw in NEXTAUTH_KEYWORDS)
+    is_jwt = any(kw in extras_str for kw in JWT_KEYWORDS)
+    is_prisma = any(kw in extras_str for kw in PRISMA_KEYWORDS)
+    
+    lines = ["=== AUTH REQUIREMENTS ==="]
+    
+    if is_nextjs:
+        if is_nextauth:
+            lines += [
+                "- Use next-auth v5 (Auth.js). Config in app/api/auth/[...nextauth]/route.ts",
+                "- Export { handlers: { GET, POST } } from auth config",
+                "- Use getServerSession(authOptions) in server components and API routes",
+                "- Create middleware.ts to protect routes — use auth() wrapper",
+                "- Store session data in JWT strategy unless database sessions specified",
+                "- NEVER expose session secrets client-side",
+                "- Provide AuthProvider wrapper component for client components",
+            ]
+            if is_prisma:
+                lines += [
+                    "- Use PrismaAdapter for database session storage",
+                    "- Add Session and Account models to schema.prisma",
+                ]
+        elif is_jwt:
+            lines += [
+                "- Implement JWT auth with jose library",
+                "- Store access token in httpOnly cookie (NOT localStorage)",
+                "- Implement refresh token rotation",
+                "- Create middleware.ts for route protection",
+                "- API routes must validate JWT before processing",
+            ]
+        else:
+            lines += [
+                "- Implement session-based auth with httpOnly cookies",
+                "- Create /api/auth/login, /api/auth/logout, /api/auth/me endpoints",
+                "- Protect routes via middleware.ts using NextRequest/NextResponse",
+                "- Use crypto.randomBytes for session token generation",
+            ]
+    
+    elif is_fastapi:
+        lines += [
+            "- Use python-jose for JWT, passlib[bcrypt] for password hashing",
+            "- Create app/core/auth.py with get_current_user dependency",
+            "- OAuth2PasswordBearer scheme for token extraction",
+            "- /auth/login returns access_token + refresh_token",
+            "- /auth/refresh accepts refresh_token cookie, returns new access_token",
+            "- Protect routes with Depends(get_current_user)",
+            "- Store refresh tokens in database for revocation support",
+        ]
+    
+    else:
+        lines += [
+            "- Implement secure authentication using best practices for the chosen stack",
+            "- Store session data securely (httpOnly cookies, server-side sessions)",
+            "- Protect sensitive endpoints with authentication middleware",
+            "- Hash passwords using industry-standard algorithms (bcrypt, Argon2)",
+            "- Implement proper logout functionality that invalidates sessions",
+        ]
+    
+    if complexity == Complexity.COMPLEX:
+        lines += [
+            "- Implement role-based access control (RBAC) if multiple user types",
+            "- Log auth events (login, logout, failed attempts) to database",
+            "- Rate limit auth endpoints: max 5 attempts per minute per IP",
+            "- Implement account lockout after 5 failed attempts",
+        ]
+    
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Critical Files Checklist
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_critical_files_rules(stack: dict, auth_required: bool, database: str) -> str:
+    """Generate a checklist of critical files that must exist."""
+    is_nextjs = _is_nextjs_stack(stack)
+    is_sveltekit = _is_sveltekit_stack(stack)
+    is_fastapi = _is_fastapi_stack(stack)
+    is_react = _is_react_stack(stack)
+    is_static = _is_framework_in_stack(stack, ("static", "html"))
+    is_htmx = _is_htmx_stack(stack)
+    is_alpine = _is_alpine_stack(stack)
+    
+    extras = _normalize_extras(stack.get("extras", []))
+    extras_str = " ".join(extras).lower()
+    
+    is_prisma = any(kw in extras_str for kw in PRISMA_KEYWORDS)
+    is_nextauth = any(kw in extras_str for kw in NEXTAUTH_KEYWORDS)
+    
+    lines = ["=== CRITICAL FILES — EVERY ONE MUST EXIST ==="]
+    
+    if is_nextjs:
+        lines += [
+            "✓ app/globals.css — MUST exist, MUST contain @tailwind base/components/utilities",
+            "✓ app/layout.tsx  — MUST import './globals.css' (relative path)",
+            "✓ app/page.tsx    — root page",
+            "✓ next.config.js  — even if minimal: module.exports = {}",
+            "✓ tailwind.config.js — content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}']",
+            "✓ postcss.config.js — required for Tailwind to work",
+            "✓ tsconfig.json   — paths: { '@/*': ['./*'] }",
+            "✓ .env.local.example — list ALL required env vars with placeholder values",
+        ]
+        if is_nextauth:
+            lines += [
+                "✓ app/api/auth/[...nextauth]/route.ts — Auth.js handler",
+                "✓ middleware.ts — route protection",
+            ]
+        if auth_required and not is_nextauth:
+            lines += [
+                "✓ middleware.ts — route protection",
+                "✓ app/api/auth/login/route.ts",
+                "✓ app/api/auth/logout/route.ts",
+            ]
+    
+    elif is_sveltekit:
+        lines += [
+            "✓ src/routes/+layout.svelte — root layout",
+            "✓ src/app.css — global styles with Tailwind directives",
+            "✓ src/routes/+page.svelte — home page",
+            "✓ vite.config.ts — with allowedHosts for preview",
+            "✓ svelte.config.js",
+            "✓ tailwind.config.js",
+            "✓ postcss.config.js",
+        ]
+    
+    elif is_fastapi:
+        lines += [
+            "✓ src/main.py — FastAPI app with CORS, routers included",
+            "✓ config/settings.py — Settings with pydantic_settings.BaseSettings",
+            "✓ config/database.py — DB engine, session, Base",
+            "✓ requirements.txt — ALL packages used in code must be listed",
+            "✓ .env.example — ALL env vars with placeholder values",
+            "✓ src/__init__.py — REQUIRED if using src/ package structure",
+            "✓ src/api/__init__.py — REQUIRED if using src/api/ package",
+            "✓ src/models/__init__.py — REQUIRED if using src/models/ package",
+            "✓ src/schemas/__init__.py — REQUIRED if using src/schemas/ package",
+            "✓ src/services/__init__.py — REQUIRED if using src/services/ package",
+            "✓ src/api/routers/__init__.py — REQUIRED (routers is a DIRECTORY)",
+            "✓ src/utils/__init__.py — REQUIRED if using src/utils/ package",
+        ]
+        if "pg_durable" in extras_str:
+            lines += [
+                "✓ src/services/task_queue.py — DurableTask for background jobs",
+                "✓ src/services/outbox.py — Transactional outbox for API calls",
+                "✓ src/services/healer.py — Self-healing health monitor",
+                "✓ src/workers/__init__.py — Package init",
+                "✓ src/workers/task_processor.py — Worker entry point",
+            ]
+    
+    elif is_react or is_static:
+        lines += [
+            "✓ index.html — entry point",
+            "✓ src/main.tsx or src/index.tsx — React entry point",
+            "✓ src/App.tsx — root component",
+            "✓ vite.config.ts — if using Vite",
+            "✓ tailwind.config.js — if using Tailwind",
+            "✓ .env.example — list ALL required env vars",
+        ]
+    
+    elif is_htmx or is_alpine:
+        lines += [
+            "✓ index.html — entry point with CDN script tags",
+            "✓ css/style.css — styles",
+            "✓ js/app.js — JavaScript logic",
+        ]
+    
+    if is_prisma:
+        lines += [
+            "✓ prisma/schema.prisma — complete schema with all models",
+            "✓ lib/prisma.ts — global singleton client",
+        ]
+    
+    if database and database.lower() not in ("none", ""):
+        lines += [
+            "✓ .env.example — DATABASE_URL and any auth tokens",
+        ]
+    
+    lines += [
+        "✓ README.md — setup instructions, env vars, how to run",
+        "",
+        "⚠ NEVER generate a file that imports from a file you did not generate",
+        "⚠ NEVER import './globals.css' without also generating app/globals.css",
+        "⚠ NEVER import from 'lib/prisma' without generating lib/prisma.ts",
+        "⚠ NEVER use a package without adding it to package.json or requirements.txt",
+        "⚠ NEVER mix .py and .jsx/.tsx files in the same directory",
+        "⚠ NEVER create more than ONE index.html in Vite projects",
+        "",
+        "=== FINAL VERIFICATION PASS (do this before finishing) ===",
+        "For EVERY file you generate, scan its imports and verify each",
+        "internal import (from src.*, from config.*, from app.*, or any",
+        "relative/local import) points to a file that also appears in this",
+        "project's file list. If you reference src.schemas.auth, src.utils.jwt,",
+        "src.core.security, or any other internal module, that exact file MUST",
+        "be generated as its own complete file — not assumed, not skipped.",
+        "A missing internal module causes ModuleNotFoundError at runtime and",
+        "breaks the entire application, even if every other file is correct.",
+    ]
+    
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Anti-Patterns
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_anti_patterns(stack: dict, complexity: Complexity) -> str:
+    """Generate anti-pattern warnings for the stack."""
+    is_nextjs = _is_nextjs_stack(stack)
+    is_sveltekit = _is_sveltekit_stack(stack)
+    is_react = _is_react_stack(stack)
+    is_fastapi = _is_fastapi_stack(stack)
+    is_python = _is_python_stack(stack)
+    is_htmx = _is_htmx_stack(stack)
+    is_alpine = _is_alpine_stack(stack)
+    
+    extras = _normalize_extras(stack.get("extras", []))
+    extras_str = " ".join(extras).lower()
+    is_prisma = any(kw in extras_str for kw in PRISMA_KEYWORDS)
+    
+    # Start with skill-extracted anti-patterns if available
+    skill_anti = _extract_anti_patterns_from_skill()
+    
+    lines = ["=== ANTI-PATTERNS — NEVER DO THESE ==="]
+    
+    if skill_anti:
+        lines.append(skill_anti)
+        lines.append("")
+    
+    if is_nextjs:
+        lines += [
+            "✗ Do NOT use getServerSideProps or getStaticProps (pages/ router) — use App Router",
+            "✗ Do NOT add 'use client' to layout.tsx unnecessarily",
+            "✗ Do NOT fetch data in client components when Server Component works",
+            "✗ Do NOT store sensitive data in localStorage or cookies without httpOnly",
+            "✗ Do NOT import server-only modules in client components",
+            "✗ Do NOT use process.env.* client-side without NEXT_PUBLIC_ prefix",
+            "✗ Do NOT generate app/globals.css with only /* placeholder */ content",
+            "✗ Do NOT forget to add all dependencies to package.json",
+        ]
+    
+    if is_sveltekit:
+        lines += [
+            "✗ Do NOT access localStorage, window, or document at module level",
+            "✗ Do NOT use browser APIs in +page.server.ts or +layout.server.ts",
+            "✗ Do NOT forget 'export const prerender = false' on dynamic routes",
+        ]
+    
+    if is_react and not is_nextjs:
+        lines += [
+            "✗ Do NOT use class components — use functional components with hooks",
+            "✗ Do NOT fetch in useEffect without cleanup / AbortController",
+            "✗ Do NOT mutate state directly — always create new objects/arrays",
+            "✗ Do NOT forget dependency arrays in useEffect",
+        ]
+    
+    if is_fastapi or is_python:
+        lines += [
+            "✗ Do NOT use pydantic.BaseSettings — use pydantic_settings.BaseSettings",
+            "✗ Do NOT use .dict() — use .model_dump()",
+            "✗ Do NOT block the event loop with synchronous I/O in async routes",
+            "✗ Do NOT hardcode database URLs in source code",
+            "✗ Do NOT use placeholder strings like 'Unknown X', 'TODO', or 'AI will process this'",
+            "✗ Do NOT skip API integration for third-party services if needed",
+            "✗ Do NOT import from 'api.routers' — use 'src.api.routers'",
+            "✗ Do NOT create routers.py as a file — use routers/ directory",
+            "✗ Do NOT forget __init__.py in Python packages",
+            "✗ Do NOT use relative imports across package boundaries",
+        ]
+    
+    if is_htmx:
+        lines += [
+            "✗ Do NOT return JSON from endpoints — HTMX expects HTML",
+            "✗ Do NOT use fetch() for HTMX requests — use hx-* attributes",
+            "✗ Do NOT generate package.json for HTMX projects",
+            "✗ Do NOT use React/Vue patterns in HTMX",
+        ]
+    
+    if is_alpine:
+        lines += [
+            "✗ Do NOT use Alpine for routing — that's HTMX's job",
+            "✗ Do NOT overcomplicate Alpine components — keep them simple",
+            "✗ Do NOT use Alpine for server communication — use HTMX",
+        ]
+    
+    if is_prisma:
+        lines += [
+            "✗ Do NOT create new PrismaClient() in every request",
+            "✗ Do NOT forget prisma.$disconnect() in scripts",
+        ]
+    
+    lines += [
+        "✗ Do NOT leave TODO comments or placeholder implementations",
+        "✗ Do NOT generate partial files — every file must be complete and functional",
+        "✗ Do NOT truncate long files — generate the complete content",
+        "✗ Do NOT use hardcoded localhost URLs — use environment variables",
+        "✗ Do NOT ignore TypeScript errors with @ts-ignore without explanation",
+        "✗ Do NOT use console.log in production code — use proper logging",
+        "✗ Do NOT hardcode secret keys or tokens in source code",
+    ]
+    
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Route + Database Init Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_api_and_db_init_rules(stack: dict, database: str) -> str:
+    """
+    Generate API route and database initialization rules.
+    
+    Crucial for preventing common API response shape mismatches and
+    database initialization failures.
+    """
+    is_nextjs = _is_nextjs_stack(stack)
+    db = (database or "").lower()
+    
+    is_turso = any(x in db for x in ("turso", "sqlite", "libsql"))
+    is_pg = any(x in db for x in ("postgres", "postgresql", "neon", "supabase"))
+    
+    if not is_nextjs and not is_turso and not is_pg:
+        return ""
+    
+    lines = ["=== API ROUTE + DATABASE INIT RULES ==="]
+    
+    if is_nextjs:
+        lines += [
+            "",
+            "── Next.js API Routes ──",
+            "POST endpoints MUST return the complete created object, not just {id}:",
+            "  ✓ USE:  return NextResponse.json(result.rows[0], { status: 201 })",
+            "  ✗ NEVER: return NextResponse.json({ id: result.lastInsertRowid })",
+            "  Reason: page.tsx does setItems([...items, data]) — data must match Item type",
+            "",
+            "Dynamic route handlers MUST include typed params:",
+            "  ✓ USE:  async function PUT(req: Request, { params }: { params: { id: string } })",
+            "  ✗ NEVER: async function PUT(req: Request) { const { id } = await req.json() }",
+            "  Reason: dynamic segment [id] comes from params, NOT the request body",
+            "",
+            "GET endpoints returning lists MUST return plain arrays:",
+            "  ✓ USE:  return NextResponse.json(result.rows)",
+            "  ✗ NEVER: return NextResponse.json({ data: result.rows })",
+            "  Reason: client does setItems(data) — wrapped object = nothing renders",
+            "",
+            "Client-side data fetching must guard against non-array responses:",
+            "  setItems(Array.isArray(data) ? data : [])",
+        ]
+    
+    if is_turso or is_pg:
+        lines += [
+            "",
+            "── Database Initialization ──",
+            "ALWAYS create tables using CREATE TABLE IF NOT EXISTS in lib/init-db.ts.",
+            "NEVER assume the database has tables — the app must self-initialize.",
+            "Call initDb() at the top of the first API route or in a startup hook.",
+        ]
+    
+    if is_turso:
+        lines += [
+            "",
+            "── Turso/SQLite specifics ──",
+            "completed fields: store as INTEGER (0/1), normalize to boolean in GET responses:",
+            "  completed: row.completed === 1 || row.completed === true",
+            "Use RETURNING * after INSERT/UPDATE to get the full row back.",
+            "Use parameterized args: [] — never string interpolation in SQL.",
+            "Env vars: DATABASE_URL=libsql://..., DATABASE_AUTH_TOKEN=...",
+        ]
+    
+    if is_pg:
+        lines += [
+            "",
+            "── PostgreSQL specifics ──",
+            "Use SERIAL PRIMARY KEY or uuid_generate_v4() for IDs.",
+            "Use RETURNING * after INSERT to get the full created row.",
+            "Initialize schema in lib/init-db.ts with CREATE TABLE IF NOT EXISTS.",
+            "Use connection pooling for serverless environments.",
+        ]
+    
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Architecture Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_architecture_rules(
+    features: List[str],
+    stack: dict,
+    complexity: Complexity,
+) -> str:
+    """
+    Generate architecture guidance based on stack and complexity.
+    
+    Returns empty string for simple projects.
+    """
+    if complexity == Complexity.SIMPLE:
+        return ""
+    
+    is_nextjs = _is_nextjs_stack(stack)
+    is_fastapi = _is_fastapi_stack(stack)
+    is_sveltekit = _is_sveltekit_stack(stack)
+    is_react = _is_react_stack(stack)
+    
+    lines = ["=== ARCHITECTURE REQUIREMENTS ==="]
+    
+    if is_nextjs:
+        lines += [
+            "- Separate concerns: components/ for UI, lib/ for business logic, app/api/ for endpoints",
+            "- Server Components by default — add 'use client' only when needed",
+            "- Data fetching in Server Components using async/await directly",
+            "- Use React Server Actions for form submissions when possible",
+            "- API routes for external consumption or when client-side fetch is required",
+            "- lib/actions.ts: Server Actions with 'use server' directive",
+        ]
+    
+    elif is_fastapi:
+        lines += [
+            "- Follow feature-based folder structure: src/routers/, src/models/, src/schemas/, src/services/",
+            "- Pydantic schemas in schemas/: separate Request and Response schemas",
+            "- Business logic in services/ — not in route handlers",
+            "- Database operations via dependency injection: Depends(get_db)",
+            "- Use APIRouter with prefix and tags for each resource",
+            "- Ensure imports and schemas correspondence between files",
+        ]
+    
+    elif is_sveltekit:
+        lines += [
+            "- Follow SvelteKit best practices: +page.svelte, +layout.svelte, +page.server.ts",
+            "- Use load functions for data fetching in +page.ts or +page.server.ts",
+            "- Keep components small and focused",
+            "- Use stores for shared state when needed",
+        ]
+    
+    elif is_react:
+        lines += [
+            "- Use feature-based folder structure: features/auth/, features/dashboard/, etc.",
+            "- Keep components pure and testable",
+            "- Use React Context for theme/auth state, not for data fetching",
+            "- Implement proper component composition",
+        ]
+    
+    else:
+        lines += [
+            "- Organize code by feature, not by layer",
+            "- Keep business logic separate from presentation",
+            "- Use environment variables for configuration",
+            "- Implement proper error handling with try/catch",
+        ]
+    
+    # Complex features (applies to all stacks)
+    if complexity == Complexity.COMPLEX:
+        features_str = " ".join(_normalize_features(features)).lower()
+        
+        if "dashboard" in features_str or "analytics" in features_str:
+            lines += [
+                "- Dashboard: implement data aggregation at API layer, not client",
+                "- Use server-side pagination for all data tables",
+                "- Charts: prefer lightweight recharts (Next.js) or chart.js",
+            ]
+        
+        if "upload" in features_str or "file" in features_str or "image" in features_str:
+            lines += [
+                "- File uploads: validate type and size server-side before storage",
+                "- Return presigned URLs for direct S3 uploads when possible",
+                "- Store file metadata in database, not the file content",
+            ]
+        
+        if "payment" in features_str or "stripe" in features_str:
+            lines += [
+                "- Payment: NEVER process payments client-side",
+                "- Verify webhook signatures before processing payment events",
+                "- Idempotency keys on all payment API calls",
+                "- Store payment intent IDs in database for reconciliation",
+            ]
+        
+        if "search" in features_str:
+            lines += [
+                "- Search: debounce client-side search input (300ms minimum)",
+                "- Full-text search via database (LIKE/ILIKE for simple, pg_trgm for better)",
+            ]
+        
+        if "chat" in features_str or "message" in features_str:
+            lines += [
+                "- Chat: implement WebSocket for real-time messaging",
+                "- Store message history in database",
+                "- Implement typing indicators and read receipts",
+            ]
+        
+        if "api" in features_str:
+            lines += [
+                "- API: implement versioning (v1, v2)",
+                "- Use rate limiting for public endpoints",
+                "- Implement request validation middleware",
+                "- Generate OpenAPI/Swagger documentation",
+            ]
+    
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main Prompt Builder
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_system_prompt(
+    app_name: str,
+    description: str,
+    features: list[str],
+    auth_required: bool,
+    database: str,
+    stack: dict,
+    include_agents_md: bool = True,
+) -> str:
+    """
+    Build a complete system prompt with SkillOpt-optimized behaviors.
+    
+    Args:
+        app_name: Name of the application
+        description: Brief description of the project
+        features: List of features to implement
+        auth_required: Whether authentication is required
+        database: Database type (e.g., 'postgresql', 'sqlite', 'mongodb')
+        stack: Stack configuration dict with frontend/backend/extras
+        include_agents_md: Whether to include AGENTS.md (default: True)
+    
+    Returns:
+        Complete system prompt string for the AI agent
+    """
+    
+    if not app_name or not description or not isinstance(stack, dict):
+        raise ValueError("app_name, description, and stack are required")
+    
+    features_list = _normalize_features(features)
+    stack_desc = get_stack_description(stack)
+    flags = detect_stack_flags(stack)
+    complexity = _classify_complexity(features_list, auth_required, database, stack)
+    
+    # ── Detect what the project actually needs ────────────────
+    combined = (
+        description + " " +
+        " ".join(features_list) + " " +
+        " ".join(_normalize_extras(stack.get("extras", [])))
+    ).lower()
+    
+    has_alembic = "alembic" in combined or "migration" in combined
+    has_websockets = any(x in combined for x in ("websocket", "realtime", "socket"))
+    
+    # ── Load AGENTS.md (AUTHORITATIVE GUIDE) ──────────────────
+    agents_md = ""
+    if include_agents_md:
+        agents_md = load_agents_md()
+    
+    # ── Load optimized skill ────────────────────────────────────
+    skill_content = _load_generation_skill()
+    skill_version = _SKILL_VERSION
+    
+    # ── Build rules ─────────────────────────────────────────────
+    rules: list[str] = []
+    
+    # ── 1. AGENTS.md (AUTHORITATIVE - ALWAYS FIRST) ──
+    if agents_md:
+        rules.append(f"""
+# ═══════════════════════════════════════════════════════════
+# AGENTS.MD — AUTHORITATIVE PROJECT STANDARDS (MUST FOLLOW)
+# ═══════════════════════════════════════════════════════════
+# This document overrides ALL other instructions.
+# Every rule in AGENTS.md is MANDATORY.
+# ═══════════════════════════════════════════════════════════
+
+{agents_md}
+
+# ═══════════════════════════════════════════════════════════
+# END OF AGENTS.MD - ALL ABOVE RULES ARE MANDATORY
+# ═══════════════════════════════════════════════════════════
+""")
+    
+    # ── 2. IMMUTABLE STACK BLOCK ──
+    rules.append(_get_immutable_stack_block(stack, auth_required))
+    
+    # ── 3. Critical files checklist ──
+    rules.append(_get_critical_files_rules(stack, auth_required, database))
+    
+    # ── 4. Stack-specific rules ──
+    stack_rules = _get_stack_specific_rules(stack, auth_required, database)
+    if stack_rules:
+        rules.append(stack_rules)
+    
+    # ── 5. Auth rules ──
+    if auth_required:
+        rules.append(_get_auth_rules(stack, complexity))
+    
+    # ── 6. API + DB init rules ──
+    api_db_rules = _get_api_and_db_init_rules(stack, database)
+    if api_db_rules:
+        rules.append(api_db_rules)
+    
+    # ── 7. Architecture rules (for moderate/complex) ──
+    arch_rules = _get_architecture_rules(features_list, stack, complexity)
+    if arch_rules:
+        rules.append(arch_rules)
+    
+    # ── 8. Universal rules ──
+    rules.append(get_universal_rules())
+    
+    # ── 9. Anti-patterns ──
+    rules.append(_get_anti_patterns(stack, complexity))
+    
+    # ── CDN-only project rule ──
+    if flags.get("is_cdn_frontend") and not flags.get("is_node_frontend"):
+        rules.append(
+            "NO-NPM RULE: CDN-only project.\n"
+            "- DO NOT generate package.json.\n"
+            "- Load all JS via <script> tags in HTML."
+        )
+
+    # ── Assemble final prompt ──────────────────────────────────
+    features_text = (
+        "\n".join(f"  - {f}" for f in features_list)
+        if features_list else "  - none specified"
+    )
+    
+    extras = _normalize_extras(stack.get("extras", []))
+    extras_text = (
+        "\n".join(f"  - {e}" for e in extras)
+        if extras else "  - none"
+    )
+    
+    complexity_guidance = {
+        Complexity.SIMPLE: "Focused, single-purpose app. Keep it clean and minimal.",
+        Complexity.MODERATE: "Multi-feature app. Proper error handling, separation of concerns.",
+        Complexity.COMPLEX: "Production-grade. Layered architecture, full error handling, no stubs.",
+    }[complexity]
+    
+    rules_block = "\n\n".join(r for r in rules if r and r.strip())
+    
+    # ── EVOLVE: Add learned warnings ────────────────────────────
+    try:
+        from app.services.evolve_service import PromptAugmenter
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply()
+        learned = asyncio.run(PromptAugmenter.get_learned_additions(stack))
+        if learned:
+            rules_block += "\n\n# ═══════════════════════════════════════════════════════════\n"
+            rules_block += "# LEARNED FROM PAST FAILURES (auto-generated)\n"
+            rules_block += "# ═══════════════════════════════════════════════════════════\n"
+            rules_block += learned
+    except Exception:
+        pass
+
+    # ── Build the final prompt ──────────────────────────────────
+    return f"""You are an expert {stack_desc} developer generating complete, production-ready code.
+
+PROJECT: {app_name}
+DESCRIPTION: {description}
+COMPLEXITY: {complexity.value.upper()}
+
+{complexity_guidance}
+
+FEATURES:
+{features_text}
+
+EXTRAS:
+{extras_text}
+
+AUTH: {"YES" if auth_required else "NO"}
+DATABASE: {database or "none"}
+
+{rules_block}
+
+# ═══════════════════════════════════════════════════════════
+# OPTIMIZED SKILL (SkillOpt v{skill_version})
+# ═══════════════════════════════════════════════════════════
+
+{skill_content}
+
+# ═══════════════════════════════════════════════════════════
+# SECURITY REQUIREMENTS
+# ═══════════════════════════════════════════════════════════
+
+{_load_security_skill()}
+
+# ═══════════════════════════════════════════════════════════
+# PROJECT-SPECIFIC CONTEXT
+# ═══════════════════════════════════════════════════════════
+
+CRITICAL — Config file layout:
+- Settings MUST go in config/settings.py only. Never generate src/config/settings.py or src/core/config.py.
+- Database setup MUST go in config/database.py only. Never generate src/core/database.py or src/utils/database.py.
+- Do NOT create duplicate config files in multiple locations.
+
+CONFIGURATION RULES — READ BEFORE GENERATING ANY FILE:
+1. Read config/settings.py to learn the EXACT field names
+2. Use those exact names in ALL files (services, API, .env, etc.)
+3. Never rename, prefix, or modify Settings field names
+4. DATABASE_URL stays DATABASE_URL everywhere
+5. Field names in code MUST match field names in Settings class
+
+OUTPUT RULES:
+1. Generate EVERY file needed — do not skip any file another file imports from
+2. Every file must be COMPLETE — no truncation, no "// rest of implementation"
+3. Every import must resolve — if you import it, you generate it
+4. Environment variables: use process.env.VAR_NAME (Next.js) or settings.VAR (FastAPI)
+5. All generated code must be immediately runnable after: npm install / pip install
+6. Follow the CRITICAL FILES checklist above — missing any will break the app
+7. App must be runnable after: npm install / pip install -r requirements.txt
+
+# ═══════════════════════════════════════════════════════════
+# WEB SEARCH AVAILABLE
+# ═══════════════════════════════════════════════════════════
+
+- You can request web searches for latest API docs, package versions, or endpoints
+- Use the web_search tool when you need current information
+- This ensures generated code uses correct, up-to-date APIs
+"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+
+__all__ = [
+    "build_system_prompt",
+    "load_agents_md",
+    "Complexity",
+]
